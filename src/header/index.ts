@@ -1,1 +1,1 @@
-export { MummaHeader, type MummaHeaderProps } from './MummaHeader';
+export { MummaHeader, MummaMenuItem, type MummaHeaderProps } from './MummaHeader';

@@ -40,3 +40,30 @@ test('gear menu exposes account link and sign out', async () => {
   fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
   await waitFor(() => expect(signOutSpy).toHaveBeenCalled());
 });
+
+test('actions and menuItems slots render app-specific content', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true, status: 200,
+    json: async () => ({
+      authenticated: true,
+      user: { id: 'u1', email: 'ben@x.co', user_metadata: {} },
+      session: { access_token: 'at', refresh_token: 'rt', expires_at: 9999999999 },
+      appAccess: {},
+    }),
+  }));
+  const supabase = { auth: { setSession: vi.fn().mockResolvedValue({}), signOut: vi.fn(), getSession: vi.fn().mockResolvedValue({ data: { session: null } }) } };
+  const client = new AuthClient({ supabase: supabase as any, authBaseUrl: 'https://auth.test' });
+  const { MummaMenuItem } = await import('../src/header/MummaHeader');
+  render(
+    <MummaAuthProvider client={client}>
+      <MummaHeader
+        appName="Forward"
+        actions={<button type="button">Quick Add</button>}
+        menuItems={<MummaMenuItem href="https://x/prefs">Preferences</MummaMenuItem>}
+      />
+    </MummaAuthProvider>
+  );
+  expect(screen.getByRole('button', { name: 'Quick Add' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /settings/i }));
+  expect((screen.getByRole('link', { name: 'Preferences' }) as HTMLAnchorElement).href).toBe('https://x/prefs');
+});

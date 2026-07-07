@@ -5,12 +5,16 @@ import { resolveAuthBaseUrl } from '../auth/urls';
 export interface MummaHeaderProps {
   appName: string;
   logoSrc?: string;
-  /** URL of the family dashboard; omit to hide the back-to-family button */
+  /** URL of the family dashboard; omit to hide the family icon */
   familyUrl?: string;
   /** Defaults to `${authBaseUrl}/manage-account` */
   accountUrl?: string;
-  /** Extra content rendered right of the name (breadcrumbs, app nav) */
+  /** Content rendered after the app name (breadcrumbs, app nav) */
   children?: ReactNode;
+  /** App-specific controls rendered on the right, before the family and gear icons */
+  actions?: ReactNode;
+  /** Extra entries at the top of the gear menu — use MummaMenuItem for consistent styling */
+  menuItems?: ReactNode;
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -21,15 +25,14 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--mumma-header-fg, #f9fafb)',
     fontFamily: 'var(--mumma-font, system-ui, sans-serif)',
   },
-  family: {
-    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-    color: 'inherit', textDecoration: 'none', fontSize: '0.875rem', opacity: 0.85,
-  },
   logo: { height: '1.75rem', width: 'auto', display: 'block' },
   name: { fontSize: '1.05rem', fontWeight: 600, marginRight: 'auto' },
-  gear: {
+  actions: { display: 'inline-flex', alignItems: 'center', gap: '0.5rem' },
+  iconBtn: {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     background: 'none', border: 'none', color: 'inherit', cursor: 'pointer',
-    fontSize: '1.15rem', lineHeight: 1, padding: '0.35rem',
+    fontSize: '1.15rem', lineHeight: 1, padding: '0.35rem', textDecoration: 'none',
+    borderRadius: '0.35rem',
   },
   menu: {
     position: 'absolute', right: '0.75rem', top: '3rem', zIndex: 1000,
@@ -45,27 +48,52 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-export function MummaHeader({ appName, logoSrc, familyUrl, accountUrl, children }: MummaHeaderProps) {
+/**
+ * Gear-menu entry with the header's styling. Renders a link when `href` is
+ * given, otherwise a button. Apps use this to add entries via `menuItems`.
+ */
+export function MummaMenuItem({ href, onClick, children }: {
+  href?: string;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  if (href) return <a href={href} style={styles.item}>{children}</a>;
+  return <button type="button" style={styles.item} onClick={onClick}>{children}</button>;
+}
+
+function HomeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V21h14V9.5" />
+    </svg>
+  );
+}
+
+export function MummaHeader({ appName, logoSrc, familyUrl, accountUrl, children, actions, menuItems }: MummaHeaderProps) {
   const { signOut, user, client } = useAuth();
   const [open, setOpen] = useState(false);
-  const account = accountUrl ?? `${(client as any).authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
+  const account = accountUrl ?? `${client.authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
 
   return (
     <header style={{ ...styles.bar, position: 'relative' }}>
-      {familyUrl && (
-        <a href={familyUrl} style={styles.family} aria-label="Back to family">
-          <span aria-hidden>←</span> Family
-        </a>
-      )}
       {logoSrc && <img src={logoSrc} alt={`${appName} logo`} style={styles.logo} />}
       <span style={styles.name}>{appName}</span>
       {children}
-      <button type="button" aria-label="Settings" style={styles.gear} onClick={() => setOpen(o => !o)}>⚙</button>
+      {actions && <span style={styles.actions}>{actions}</span>}
+      {familyUrl && (
+        <a href={familyUrl} style={styles.iconBtn} aria-label="Back to family" title="Family">
+          <HomeIcon />
+        </a>
+      )}
+      <button type="button" aria-label="Settings" style={styles.iconBtn} onClick={() => setOpen(o => !o)}>⚙</button>
       {open && (
         <nav style={styles.menu} aria-label="Settings menu">
           {user?.email && <span style={{ ...styles.item, opacity: 0.6, cursor: 'default' }}>{user.email}</span>}
-          <a href={account} style={styles.item}>Account</a>
-          <button type="button" style={styles.item} onClick={() => signOut()}>Sign out</button>
+          {menuItems}
+          <MummaMenuItem href={account}>Account</MummaMenuItem>
+          <MummaMenuItem onClick={() => signOut()}>Sign out</MummaMenuItem>
         </nav>
       )}
     </header>

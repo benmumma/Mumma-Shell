@@ -149,7 +149,9 @@ export class AuthClient {
     if (this.expiryTimer) { clearTimeout(this.expiryTimer); this.expiryTimer = null; }
     const exp = this.state.session?.expires_at;
     if (!exp || !this.state.authenticated) return;
-    const delay = Math.max((exp - 60 - Math.floor(Date.now() / 1000)) * 1000, 5000);
+    // Clamp to setTimeout's 32-bit max — an overflowing delay fires immediately,
+    // which would turn this into a 5s polling loop.
+    const delay = Math.min(Math.max((exp - 60 - Math.floor(Date.now() / 1000)) * 1000, 5000), 0x7fffffff);
     this.expiryTimer = setTimeout(() => { void this.checkAuthStatus(); }, delay);
   }
 
