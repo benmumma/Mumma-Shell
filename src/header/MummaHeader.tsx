@@ -27,11 +27,16 @@ const styles: Record<string, CSSProperties> = {
   },
   logo: { height: '1.75rem', width: 'auto', display: 'block' },
   name: { fontSize: '1.05rem', fontWeight: 600, marginRight: 'auto' },
-  actions: { display: 'inline-flex', alignItems: 'center', gap: '0.5rem' },
+  // Right-side cluster (actions + family + gear): one uniform gap, and every
+  // icon button is a fixed 2rem square so distribution stays even regardless
+  // of glyph aspect ratio or how consumers size their injected buttons.
+  right: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' },
+  actions: { display: 'inline-flex', alignItems: 'center', gap: '0.25rem' },
   iconBtn: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: '2rem', height: '2rem', padding: 0, flex: 'none',
     background: 'none', border: 'none', color: 'inherit', cursor: 'pointer',
-    fontSize: '1.15rem', lineHeight: 1, padding: '0.35rem', textDecoration: 'none',
+    fontSize: '1.15rem', lineHeight: 1, textDecoration: 'none',
     borderRadius: '0.35rem',
   },
   menu: {
@@ -91,13 +96,15 @@ export function MummaHeader({ appName, logoSrc, familyUrl, accountUrl, children,
       {logoSrc && <img src={logoSrc} alt={`${appName} logo`} style={styles.logo} />}
       <span style={styles.name}>{appName}</span>
       {children}
-      {actions && <span style={styles.actions}>{actions}</span>}
-      {familyUrl && (
-        <a href={familyUrl} style={styles.iconBtn} aria-label="Back to family" title="Family">
-          <HomeIcon />
-        </a>
-      )}
-      <button type="button" aria-label="Settings" style={styles.iconBtn} onClick={() => setOpen(o => !o)}><GearIcon /></button>
+      <span style={styles.right}>
+        {actions && <span style={styles.actions}>{actions}</span>}
+        {familyUrl && (
+          <a href={familyUrl} style={styles.iconBtn} aria-label="Back to family" title="Family">
+            <HomeIcon />
+          </a>
+        )}
+        <button type="button" aria-label="Settings" style={styles.iconBtn} onClick={() => setOpen(o => !o)}><GearIcon /></button>
+      </span>
       {open && (
         <nav style={styles.menu} aria-label="Settings menu">
           {user?.email && <span style={{ ...styles.item, opacity: 0.6, cursor: 'default' }}>{user.email}</span>}

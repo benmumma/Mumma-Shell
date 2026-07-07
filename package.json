@@ -1,6 +1,6 @@
 {
   "name": "@mumma/shell",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Mumapps client shell: v4-contract auth core + React bindings for *.mumma.co apps",
   "license": "UNLICENSED",
   "type": "module",
