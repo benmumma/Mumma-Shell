@@ -1,10 +1,12 @@
 {
   "name": "@mumma/shell",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Mumapps client shell: v4-contract auth core + React bindings for *.mumma.co apps",
   "license": "UNLICENSED",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "exports": {
     "./auth": {
       "types": "./dist/auth/index.d.ts",
@@ -33,7 +35,9 @@
     "react": ">=17"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.110.0",
