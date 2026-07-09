@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.2.1/mumma-shell-0.2.1.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.0/mumma-shell-0.3.0.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -64,8 +64,22 @@ Optional chrome:
 ```jsx
 import { MummaHeader } from '@mumma/shell/header';
 
-<MummaHeader appName="Forward" logoSrc="/logo.png" familyUrl="https://family.mumma.co" />
+<MummaHeader appName="Forward" appKey="forward" familyUrl="https://family.mumma.co" />
 ```
+
+The app name renders as an app switcher by default — a dropdown listing every
+Mumma app (built-in `MUMMA_APPS` registry: Family Dashboard, Forward,
+Intellect, MealMate, Gallery, Games, REM, ScholarQuest, Fitter) with icons
+hotlinked from `https://www.mumma.co/new_logos/`. Icons that fail to load
+(e.g. not uploaded yet) fall back to the Mumma Labs mark at runtime, so new
+icons appear without a package release.
+
+- `appKey` — registry key of the current app; highlights it in the switcher
+  and uses its registry icon when `logoSrc` is omitted.
+- `logoSrc` — explicit header icon; omit to use the registry icon, falling
+  back to the Mumma Labs mark.
+- `apps` — override the switcher's app list (`MummaApp[]`).
+- `appSwitcher={false}` — plain static title, no dropdown.
 
 Optional acting-as-member decoration (client state only, not auth):
 
@@ -86,4 +100,4 @@ await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.mem
 
 - `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, and the contract's TypeScript types.
 - `./react` — `MummaAuthProvider`, `useAuth`, `useSession`, `useHousehold`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
-- `./header` — `MummaHeader`, a thin shared app header (logo/name, back-to-family link, gear menu with account/sign-out). Theme via CSS custom properties; ships no stylesheet.
+- `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-family link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.
