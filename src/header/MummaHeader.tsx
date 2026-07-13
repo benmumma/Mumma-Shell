@@ -8,6 +8,8 @@ export interface MummaHeaderProps {
   /** Registry key of the current app — highlights it in the switcher and picks its icon */
   appKey?: string;
   logoSrc?: string;
+  /** Where the logo links to; defaults to `/` (the app's own homepage) */
+  homeUrl?: string;
   /** Apps shown in the switcher; defaults to the built-in MUMMA_APPS registry */
   apps?: MummaApp[];
   /** Set false to render the app name as a plain title instead of a switcher */
@@ -32,6 +34,7 @@ const styles: Record<string, CSSProperties> = {
     color: 'var(--mumma-header-fg, #f9fafb)',
     fontFamily: 'var(--mumma-font, system-ui, sans-serif)',
   },
+  logoLink: { display: 'inline-flex', flex: 'none', textDecoration: 'none', borderRadius: '0.35rem' },
   logo: { height: '2rem', width: '2rem', objectFit: 'contain', display: 'block', borderRadius: '0.35rem' },
   name: { fontSize: '1.05rem', fontWeight: 600, marginRight: 'auto' },
   switcherTrigger: {
@@ -142,7 +145,7 @@ function AppIcon({ src, alt, style }: { src: string; alt: string; style: CSSProp
 }
 
 export function MummaHeader({
-  appName, appKey, logoSrc, apps = MUMMA_APPS, appSwitcher = true,
+  appName, appKey, logoSrc, homeUrl = '/', apps = MUMMA_APPS, appSwitcher = true,
   familyUrl, accountUrl, children, actions, menuItems,
 }: MummaHeaderProps) {
   const { signOut, user, client } = useAuth();
@@ -172,7 +175,9 @@ export function MummaHeader({
 
   return (
     <header ref={rootRef} style={{ ...styles.bar, position: 'relative' }}>
-      <AppIcon src={iconSrc} alt={`${appName} logo`} style={styles.logo} />
+      <a href={homeUrl} style={styles.logoLink} aria-label="Home" title={`${appName} home`}>
+        <AppIcon src={iconSrc} alt={`${appName} logo`} style={styles.logo} />
+      </a>
       {appSwitcher ? (
         <button
           type="button"

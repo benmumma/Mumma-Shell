@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.0/mumma-shell-0.3.0.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.1/mumma-shell-0.3.1.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -76,6 +76,8 @@ icons appear without a package release.
 
 - `appKey` — registry key of the current app; highlights it in the switcher
   and uses its registry icon when `logoSrc` is omitted.
+- `homeUrl` — where the logo links to; defaults to `/` (the app's own
+  homepage). The logo is always a link, so clicking it returns users home.
 - `logoSrc` — explicit header icon; omit to use the registry icon, falling
   back to the Mumma Labs mark.
 - `apps` — override the switcher's app list (`MummaApp[]`).

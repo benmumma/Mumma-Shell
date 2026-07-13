@@ -32,6 +32,13 @@ test('renders app name, logo, and family link', async () => {
   expect((screen.getByAltText('Forward logo') as HTMLImageElement).src).toContain('/logo.png');
 });
 
+test('logo links to the app homepage', async () => {
+  renderHeader();
+  const home = screen.getByRole('link', { name: /^home$/i }) as HTMLAnchorElement;
+  expect(home.getAttribute('href')).toBe('/');
+  expect(home.querySelector('img')).toBeTruthy();
+});
+
 test('gear menu exposes account link and sign out', async () => {
   const { signOutSpy } = renderHeader();
   fireEvent.click(screen.getByRole('button', { name: /settings/i }));
