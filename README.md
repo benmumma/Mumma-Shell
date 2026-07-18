@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.1/mumma-shell-0.3.1.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.2/mumma-shell-0.3.2.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -68,9 +68,9 @@ import { MummaHeader } from '@mumma/shell/header';
 ```
 
 The app name renders as an app switcher by default — a dropdown listing every
-Mumma app (built-in `MUMMA_APPS` registry: Family Dashboard, Forward,
-Intellect, MealMate, Gallery, Games, REM, ScholarQuest, Fitter) with icons
-hotlinked from `https://www.mumma.co/new_logos/`. Icons that fail to load
+Mumma app (built-in `MUMMA_APPS` registry: Dekko, Forward, Intellect,
+MealMate, Library, Arcade, REM, ScholarQuest, Fitter) with icons hotlinked
+from `https://www.mumma.co/new_logos/[app_name]_live.png`. Icons that fail to load
 (e.g. not uploaded yet) fall back to the Mumma Labs mark at runtime, so new
 icons appear without a package release.
 

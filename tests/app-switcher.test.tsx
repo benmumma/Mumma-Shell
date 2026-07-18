@@ -23,16 +23,16 @@ function renderWithAuth(ui: ReactNode) {
 
 test('registry lists the nine mumma apps in order with hosted icons', () => {
   expect(MUMMA_APPS.map(a => a.key)).toEqual([
-    'family', 'forward', 'intellect', 'mealmate', 'gallery', 'games', 'rem', 'scholarquest', 'fitter',
+    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter',
   ]);
   expect(MUMMA_APPS.find(a => a.key === 'forward')).toEqual({
     key: 'forward', name: 'Forward', url: 'https://forward.mumma.co',
-    iconSrc: 'https://www.mumma.co/new_logos/forward_2026.png',
+    iconSrc: 'https://www.mumma.co/new_logos/forward_live.png',
   });
   // future icons are listed now so they light up without a package release
-  expect(MUMMA_APPS.find(a => a.key === 'gallery')?.iconSrc).toBe('https://www.mumma.co/new_logos/gallery_2026.png');
-  for (const app of MUMMA_APPS) expect(app.iconSrc).toMatch(/^https:\/\/www\.mumma\.co\/new_logos\/.+\.png$/);
-  expect(MUMMA_LABS_ICON).toBe('https://www.mumma.co/new_logos/mumma_labs_2026.png');
+  expect(MUMMA_APPS.find(a => a.key === 'library')?.iconSrc).toBe('https://www.mumma.co/new_logos/library_live.png');
+  for (const app of MUMMA_APPS) expect(app.iconSrc).toMatch(/^https:\/\/www\.mumma\.co\/new_logos\/\w+_live\.png$/);
+  expect(MUMMA_LABS_ICON).toBe('https://www.mumma.co/new_logos/mumma_labs_live.png');
 });
 
 test('app name opens a switcher listing every app with its icon', () => {
@@ -41,10 +41,10 @@ test('app name opens a switcher listing every app with its icon', () => {
   expect(trigger.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(trigger);
   expect(trigger.getAttribute('aria-expanded')).toBe('true');
-  const gallery = screen.getByRole('link', { name: /gallery/i }) as HTMLAnchorElement;
-  expect(gallery.href).toBe('https://gallery.mumma.co/');
-  expect((screen.getByAltText('Gallery') as HTMLImageElement).src)
-    .toBe('https://www.mumma.co/new_logos/gallery_2026.png');
+  const library = screen.getByRole('link', { name: /library/i }) as HTMLAnchorElement;
+  expect(library.href).toBe('https://gallery.mumma.co/');
+  expect((screen.getByAltText('Library') as HTMLImageElement).src)
+    .toBe('https://www.mumma.co/new_logos/library_live.png');
   for (const app of MUMMA_APPS) expect(screen.getByRole('link', { name: new RegExp(app.name, 'i') })).toBeTruthy();
 });
 
@@ -72,9 +72,9 @@ test('appSwitcher={false} renders a plain title', () => {
 });
 
 test('header falls back to the registry icon, then mumma labs on load error', () => {
-  renderWithAuth(<MummaHeader appName="Gallery" appKey="gallery" />);
-  const logo = screen.getByAltText('Gallery logo') as HTMLImageElement;
-  expect(logo.src).toBe('https://www.mumma.co/new_logos/gallery_2026.png');
+  renderWithAuth(<MummaHeader appName="Library" appKey="library" />);
+  const logo = screen.getByAltText('Library logo') as HTMLImageElement;
+  expect(logo.src).toBe('https://www.mumma.co/new_logos/library_live.png');
   fireEvent.error(logo);
   expect(logo.src).toBe(MUMMA_LABS_ICON);
 });
