@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.2/mumma-shell-0.3.2.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.3/mumma-shell-0.3.3.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -64,7 +64,7 @@ Optional chrome:
 ```jsx
 import { MummaHeader } from '@mumma/shell/header';
 
-<MummaHeader appName="Forward" appKey="forward" familyUrl="https://family.mumma.co" />
+<MummaHeader appName="Forward" appKey="forward" dekkoUrl="https://dekko.mumma.co" />
 ```
 
 The app name renders as an app switcher by default — a dropdown listing every
@@ -102,4 +102,4 @@ await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.mem
 
 - `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, and the contract's TypeScript types.
 - `./react` — `MummaAuthProvider`, `useAuth`, `useSession`, `useHousehold`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
-- `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-family link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.
+- `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.

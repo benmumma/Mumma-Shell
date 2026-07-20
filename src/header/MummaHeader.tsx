@@ -14,13 +14,15 @@ export interface MummaHeaderProps {
   apps?: MummaApp[];
   /** Set false to render the app name as a plain title instead of a switcher */
   appSwitcher?: boolean;
-  /** URL of the family dashboard; omit to hide the family icon */
+  /** URL of the Dekko dashboard; omit to hide the Dekko icon */
+  dekkoUrl?: string;
+  /** @deprecated Use `dekkoUrl` — Family Dashboard is now Dekko */
   familyUrl?: string;
   /** Defaults to `${authBaseUrl}/manage-account` */
   accountUrl?: string;
   /** Content rendered after the app name (breadcrumbs, app nav) */
   children?: ReactNode;
-  /** App-specific controls rendered on the right, before the family and gear icons */
+  /** App-specific controls rendered on the right, before the Dekko and gear icons */
   actions?: ReactNode;
   /** Extra entries at the top of the gear menu — use MummaMenuItem for consistent styling */
   menuItems?: ReactNode;
@@ -146,8 +148,9 @@ function AppIcon({ src, alt, style }: { src: string; alt: string; style: CSSProp
 
 export function MummaHeader({
   appName, appKey, logoSrc, homeUrl = '/', apps = MUMMA_APPS, appSwitcher = true,
-  familyUrl, accountUrl, children, actions, menuItems,
+  dekkoUrl, familyUrl, accountUrl, children, actions, menuItems,
 }: MummaHeaderProps) {
+  const dekko = dekkoUrl ?? familyUrl;
   const { signOut, user, client } = useAuth();
   const [gearOpen, setGearOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -195,8 +198,8 @@ export function MummaHeader({
       {children}
       <span style={styles.right}>
         {actions && <span style={styles.actions}>{actions}</span>}
-        {familyUrl && (
-          <a href={familyUrl} style={styles.iconBtn} aria-label="Back to family" title="Family">
+        {dekko && (
+          <a href={dekko} style={styles.iconBtn} aria-label="Back to Dekko" title="Dekko">
             <HomeIcon />
           </a>
         )}

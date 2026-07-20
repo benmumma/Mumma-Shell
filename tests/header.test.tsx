@@ -19,17 +19,32 @@ function renderHeader() {
   const signOutSpy = vi.spyOn(client, 'signOut').mockImplementation(() => {});
   render(
     <MummaAuthProvider client={client}>
-      <MummaHeader appName="Forward" logoSrc="/logo.png" familyUrl="https://family.mumma.co" />
+      <MummaHeader appName="Forward" logoSrc="/logo.png" dekkoUrl="https://dekko.mumma.co" />
     </MummaAuthProvider>
   );
   return { signOutSpy };
 }
 
-test('renders app name, logo, and family link', async () => {
+test('renders app name, logo, and Dekko link', async () => {
   renderHeader();
   expect(screen.getByText('Forward')).toBeTruthy();
-  expect((screen.getByRole('link', { name: /family/i }) as HTMLAnchorElement).href).toBe('https://family.mumma.co/');
+  expect((screen.getByRole('link', { name: /dekko/i }) as HTMLAnchorElement).href).toBe('https://dekko.mumma.co/');
   expect((screen.getByAltText('Forward logo') as HTMLImageElement).src).toContain('/logo.png');
+});
+
+test('deprecated familyUrl prop still renders the Dekko link', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true, status: 200,
+    json: async () => ({ authenticated: false }),
+  }));
+  const supabase = { auth: { setSession: vi.fn().mockResolvedValue({}), signOut: vi.fn(), getSession: vi.fn().mockResolvedValue({ data: { session: null } }) } };
+  const client = new AuthClient({ supabase: supabase as any, authBaseUrl: 'https://auth.test' });
+  render(
+    <MummaAuthProvider client={client}>
+      <MummaHeader appName="Forward" familyUrl="https://dekko.mumma.co" />
+    </MummaAuthProvider>
+  );
+  expect((screen.getByRole('link', { name: /dekko/i }) as HTMLAnchorElement).href).toBe('https://dekko.mumma.co/');
 });
 
 test('logo links to the app homepage', async () => {

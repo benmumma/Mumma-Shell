@@ -42,7 +42,7 @@ test('app name opens a switcher listing every app with its icon', () => {
   fireEvent.click(trigger);
   expect(trigger.getAttribute('aria-expanded')).toBe('true');
   const library = screen.getByRole('link', { name: /library/i }) as HTMLAnchorElement;
-  expect(library.href).toBe('https://gallery.mumma.co/');
+  expect(library.href).toBe('https://library.mumma.co/');
   expect((screen.getByAltText('Library') as HTMLImageElement).src)
     .toBe('https://www.mumma.co/new_logos/library_live.png');
   for (const app of MUMMA_APPS) expect(screen.getByRole('link', { name: new RegExp(app.name, 'i') })).toBeTruthy();
