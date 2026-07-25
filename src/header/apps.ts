@@ -3,6 +3,8 @@ export interface MummaApp {
   name: string;
   url: string;
   iconSrc: string;
+  /** appAccess key that must be truthy for this entry to render; omit for always-visible */
+  requiresAppAccess?: string;
 }
 
 export const MUMMA_LABS_ICON = 'https://www.mumma.co/new_logos/mumma_labs_live.png';
@@ -22,4 +24,5 @@ export const MUMMA_APPS: MummaApp[] = [
   { key: 'rem', name: 'REM', url: 'https://rem.mumma.co', iconSrc: icon('rem') },
   { key: 'scholarquest', name: 'ScholarQuest', url: 'https://scholar.mumma.co', iconSrc: icon('scholarquest') },
   { key: 'fitter', name: 'Fitter', url: 'https://fitter.mumma.co', iconSrc: icon('fitter') },
+  { key: 'admin', name: 'Mission Control', url: 'https://admin.mumma.co', iconSrc: icon('admin'), requiresAppAccess: 'platform-admin' },
 ];

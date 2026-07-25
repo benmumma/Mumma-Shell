@@ -1,19 +1,19 @@
 import { test, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { AuthClient } from '../src/auth/AuthClient';
 import { MummaAuthProvider } from '../src/react/AuthProvider';
 import { MummaHeader } from '../src/header/MummaHeader';
 import { MUMMA_APPS, MUMMA_LABS_ICON } from '../src/header/apps';
 
-function renderWithAuth(ui: ReactNode) {
+function renderWithAuth(ui: ReactNode, appAccess: Record<string, boolean> = {}) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
     ok: true, status: 200,
     json: async () => ({
       authenticated: true,
       user: { id: 'u1', email: 'ben@x.co', user_metadata: {} },
       session: { access_token: 'at', refresh_token: 'rt', expires_at: 9999999999 },
-      appAccess: {},
+      appAccess,
     }),
   }));
   const supabase = { auth: { setSession: vi.fn().mockResolvedValue({}), signOut: vi.fn(), getSession: vi.fn().mockResolvedValue({ data: { session: null } }) } };
@@ -21,9 +21,9 @@ function renderWithAuth(ui: ReactNode) {
   return render(<MummaAuthProvider client={client}>{ui}</MummaAuthProvider>);
 }
 
-test('registry lists the nine mumma apps in order with hosted icons', () => {
+test('registry lists the ten mumma apps in order with hosted icons', () => {
   expect(MUMMA_APPS.map(a => a.key)).toEqual([
-    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter',
+    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter', 'admin',
   ]);
   expect(MUMMA_APPS.find(a => a.key === 'forward')).toEqual({
     key: 'forward', name: 'Forward', url: 'https://forward.mumma.co',
@@ -45,7 +45,27 @@ test('app name opens a switcher listing every app with its icon', () => {
   expect(library.href).toBe('https://library.mumma.co/');
   expect((screen.getByAltText('Library') as HTMLImageElement).src)
     .toBe('https://www.mumma.co/new_logos/library_live.png');
-  for (const app of MUMMA_APPS) expect(screen.getByRole('link', { name: new RegExp(app.name, 'i') })).toBeTruthy();
+  for (const app of MUMMA_APPS.filter(a => !a.requiresAppAccess)) {
+    expect(screen.getByRole('link', { name: new RegExp(app.name, 'i') })).toBeTruthy();
+  }
+});
+
+test('access-gated admin entry is hidden without platform-admin appAccess', async () => {
+  renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />);
+  await act(async () => {}); // let the mocked auth-status check settle
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  expect(screen.getByRole('link', { name: /fitter/i })).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /mission control/i })).toBeNull();
+});
+
+test('admin entry renders when appAccess grants platform-admin', async () => {
+  renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />, { 'platform-admin': true });
+  await act(async () => {}); // let the mocked auth-status check settle
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  const admin = screen.getByRole('link', { name: /mission control/i }) as HTMLAnchorElement;
+  expect(admin.href).toBe('https://admin.mumma.co/');
+  expect((screen.getByAltText('Mission Control') as HTMLImageElement).src)
+    .toBe('https://www.mumma.co/new_logos/admin_live.png');
 });
 
 test('current app is highlighted via appKey', () => {

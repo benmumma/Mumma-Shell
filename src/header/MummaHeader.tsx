@@ -151,7 +151,7 @@ export function MummaHeader({
   dekkoUrl, familyUrl, accountUrl, children, actions, menuItems,
 }: MummaHeaderProps) {
   const dekko = dekkoUrl ?? familyUrl;
-  const { signOut, user, client } = useAuth();
+  const { signOut, user, client, appAccess } = useAuth();
   const [gearOpen, setGearOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
@@ -159,6 +159,9 @@ export function MummaHeader({
 
   const currentApp = apps.find(a => appKey ? a.key === appKey : a.name.toLowerCase() === appName.toLowerCase());
   const iconSrc = logoSrc ?? currentApp?.iconSrc ?? MUMMA_LABS_ICON;
+  // Access-gated entries only appear in the switcher when the auth state grants them;
+  // the current-app icon lookup above intentionally stays unfiltered.
+  const visibleApps = apps.filter(a => !a.requiresAppAccess || !!appAccess?.[a.requiresAppAccess]);
 
   const anyOpen = gearOpen || switcherOpen;
   useEffect(() => {
@@ -208,7 +211,7 @@ export function MummaHeader({
       </span>
       {switcherOpen && (
         <nav style={{ ...styles.menu, left: '0.75rem' }} aria-label="Switch app">
-          {apps.map(app => {
+          {visibleApps.map(app => {
             const isCurrent = app.key === currentApp?.key;
             return (
               <a key={app.key} href={app.url} aria-current={isCurrent ? 'true' : undefined}

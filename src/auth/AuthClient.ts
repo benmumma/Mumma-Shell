@@ -4,7 +4,7 @@ import { resolveAuthBaseUrl, buildSignInUrl, buildLogoutUrl, buildBridgeUrl } fr
 import { consumeBridgeHash } from './bridge';
 
 const CLEARED: Omit<AuthState, 'status'> = {
-  authenticated: false, user: null, session: null, appAccess: {}, household: null, stale: false,
+  authenticated: false, user: null, session: null, appAccess: {}, subscription: null, household: null, stale: false,
 };
 
 function defaultIsStandalone(): boolean {
@@ -104,7 +104,8 @@ export class AuthClient {
       const next: AuthState = {
         status: 'ready', authenticated: true, stale: false,
         user: data.user, session: data.session,
-        appAccess: data.appAccess ?? {}, household: data.household ?? null,
+        appAccess: data.appAccess ?? {}, subscription: data.subscription ?? null,
+        household: data.household ?? null,
       };
       this.lastMarker = readSessionMarker();
       this.setState(next);

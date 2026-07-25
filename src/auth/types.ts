@@ -32,13 +32,22 @@ export interface HouseholdBlock {
 
 export type AppAccessMap = Record<string, boolean>;
 
+export interface SubscriptionInfo {
+  hasForwardAccess: boolean;
+  hasFullSiteAccess: boolean;
+  hasMealMateAccess: boolean;
+  hasIntellectAccess: boolean;
+  hasPremiumAccess: boolean;
+  apps: Array<{ app: string; status?: string; plan_type?: string }>;
+}
+
 export interface AuthStatusResponse {
   authenticated: boolean;
   hasTokens?: boolean;
   user: AuthUser | null;
   session: AuthSession;
   appAccess?: AppAccessMap;
-  subscription?: unknown;
+  subscription?: SubscriptionInfo | null;
   household?: HouseholdBlock;
   tokenSource?: 'cookie' | 'bearer' | 'refreshed' | 'expired' | null;
   issuer?: { expected: string | null; actual: string | null };
@@ -55,6 +64,7 @@ export interface AuthState {
   user: AuthUser | null;
   session: AuthSession | null;
   appAccess: AppAccessMap;
+  subscription: SubscriptionInfo | null;
   household: HouseholdBlock | null;
   /** true when the last check was inconclusive (network/5xx/retryable) and state was carried over */
   stale: boolean;
