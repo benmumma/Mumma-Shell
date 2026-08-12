@@ -68,14 +68,14 @@ test('admin entry renders when appAccess grants platform-admin', async () => {
     .toBe('https://www.mumma.co/new_logos/admin_live.png');
 });
 
-test('pickem is a normal always-visible entry served from www.mumma.co', () => {
+test('pickem is a normal always-visible entry at its own subdomain', () => {
   expect(MUMMA_APPS.find(a => a.key === 'pickem')).toEqual({
-    key: 'pickem', name: "Pick'em", url: 'https://www.mumma.co/pickem',
+    key: 'pickem', name: "Pick'em", url: 'https://pickem.mumma.co',
     iconSrc: 'https://www.mumma.co/new_logos/pickem_live.png',
   });
   renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />);
   fireEvent.click(screen.getByRole('button', { name: /forward/i }));
-  expect((screen.getByRole('link', { name: /pick'em/i }) as HTMLAnchorElement).href).toBe('https://www.mumma.co/pickem');
+  expect((screen.getByRole('link', { name: /pick'em/i }) as HTMLAnchorElement).href).toBe('https://pickem.mumma.co/');
 });
 
 test('gated stonk entry is hidden without appAccess and shown with it', async () => {

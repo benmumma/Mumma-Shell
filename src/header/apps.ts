@@ -31,8 +31,8 @@ export const MUMMA_APPS: MummaApp[] = [
   { key: 'rem', name: 'REM', url: 'https://rem.mumma.co', iconSrc: icon('rem') },
   { key: 'scholarquest', name: 'ScholarQuest', url: 'https://scholar.mumma.co', iconSrc: icon('scholarquest') },
   { key: 'fitter', name: 'Fitter', url: 'https://fitter.mumma.co', iconSrc: icon('fitter') },
-  // Pick'em lives inside Mumapps-Client, served under www.mumma.co/pickem
-  { key: 'pickem', name: "Pick'em", url: 'https://www.mumma.co/pickem', iconSrc: icon('pickem') },
+  // Pick'em moved out of Mumapps-Client to its own client at pickem.mumma.co
+  { key: 'pickem', name: "Pick'em", url: 'https://pickem.mumma.co', iconSrc: icon('pickem') },
   { key: 'stonk', name: 'Stonk Master', url: 'https://stonk.mumma.co', iconSrc: icon('stonk'), gated: true, requiresAppAccess: 'stonk' },
   { key: 'admin', name: 'Mission Control', url: 'https://admin.mumma.co', iconSrc: icon('admin'), gated: true, requiresAppAccess: 'platform-admin' },
 ];
