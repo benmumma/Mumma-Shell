@@ -21,9 +21,9 @@ function renderWithAuth(ui: ReactNode, appAccess: Record<string, boolean> = {}) 
   return render(<MummaAuthProvider client={client}>{ui}</MummaAuthProvider>);
 }
 
-test('registry lists the ten mumma apps in order with hosted icons', () => {
+test('registry lists the twelve mumma apps in order with hosted icons', () => {
   expect(MUMMA_APPS.map(a => a.key)).toEqual([
-    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter', 'admin',
+    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter', 'pickem', 'stonk', 'admin',
   ]);
   expect(MUMMA_APPS.find(a => a.key === 'forward')).toEqual({
     key: 'forward', name: 'Forward', url: 'https://forward.mumma.co',
@@ -66,6 +66,49 @@ test('admin entry renders when appAccess grants platform-admin', async () => {
   expect(admin.href).toBe('https://admin.mumma.co/');
   expect((screen.getByAltText('Mission Control') as HTMLImageElement).src)
     .toBe('https://www.mumma.co/new_logos/admin_live.png');
+});
+
+test('pickem is a normal always-visible entry served from www.mumma.co', () => {
+  expect(MUMMA_APPS.find(a => a.key === 'pickem')).toEqual({
+    key: 'pickem', name: "Pick'em", url: 'https://www.mumma.co/pickem',
+    iconSrc: 'https://www.mumma.co/new_logos/pickem_live.png',
+  });
+  renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />);
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  expect((screen.getByRole('link', { name: /pick'em/i }) as HTMLAnchorElement).href).toBe('https://www.mumma.co/pickem');
+});
+
+test('gated stonk entry is hidden without appAccess and shown with it', async () => {
+  const { unmount } = renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  expect(screen.queryByRole('link', { name: /stonk master/i })).toBeNull();
+  unmount();
+
+  renderWithAuth(<MummaHeader appName="Forward" appKey="forward" />, { stonk: true });
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  const stonk = screen.getByRole('link', { name: /stonk master/i }) as HTMLAnchorElement;
+  expect(stonk.href).toBe('https://stonk.mumma.co/');
+  // stonk access alone does not reveal other gated entries
+  expect(screen.queryByRole('link', { name: /mission control/i })).toBeNull();
+});
+
+test('explicit appAccess prop wins over the auth context', async () => {
+  // context grants nothing, prop grants stonk
+  renderWithAuth(<MummaHeader appName="Forward" appKey="forward" appAccess={{ stonk: true }} />);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  expect(screen.getByRole('link', { name: /stonk master/i })).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /mission control/i })).toBeNull();
+});
+
+test('standalone header (no MummaAuthProvider) renders and omits gated entries', () => {
+  render(<MummaHeader appName="Forward" appKey="forward" />);
+  fireEvent.click(screen.getByRole('button', { name: /forward/i }));
+  expect(screen.getByRole('link', { name: /fitter/i })).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /stonk master/i })).toBeNull();
+  expect(screen.queryByRole('link', { name: /mission control/i })).toBeNull();
 });
 
 test('current app is highlighted via appKey', () => {

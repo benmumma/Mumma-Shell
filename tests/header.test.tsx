@@ -54,6 +54,88 @@ test('logo links to the app homepage', async () => {
   expect(home.querySelector('img')).toBeTruthy();
 });
 
+test('logo click does a fast SPA navigation to the current-site home', () => {
+  renderHeader();
+  const pushState = vi.spyOn(window.history, 'pushState');
+  const onPop = vi.fn();
+  window.addEventListener('popstate', onPop);
+  const home = screen.getByRole('link', { name: /^home$/i });
+  const notPrevented = fireEvent.click(home);
+  expect(notPrevented).toBe(false); // default was prevented — no full reload
+  expect(pushState).toHaveBeenCalledWith(null, '', '/');
+  expect(onPop).toHaveBeenCalled();
+  window.removeEventListener('popstate', onPop);
+  pushState.mockRestore();
+});
+
+test('modified clicks on the logo fall through to the plain href', () => {
+  renderHeader();
+  const pushState = vi.spyOn(window.history, 'pushState');
+  const home = screen.getByRole('link', { name: /^home$/i });
+  // prevent jsdom from attempting a real navigation once our handler declines
+  const swallow = (e: Event) => e.preventDefault();
+  document.addEventListener('click', swallow);
+  fireEvent.click(home, { ctrlKey: true });
+  fireEvent.click(home, { metaKey: true });
+  fireEvent.click(home, { button: 1 });
+  expect(pushState).not.toHaveBeenCalled();
+  document.removeEventListener('click', swallow);
+  pushState.mockRestore();
+});
+
+test('onHomeNavigate replaces the default logo-click behavior', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true, status: 200, json: async () => ({ authenticated: false }),
+  }));
+  const supabase = { auth: { setSession: vi.fn().mockResolvedValue({}), signOut: vi.fn(), getSession: vi.fn().mockResolvedValue({ data: { session: null } }) } };
+  const client = new AuthClient({ supabase: supabase as any, authBaseUrl: 'https://auth.test' });
+  const onHomeNavigate = vi.fn();
+  const pushState = vi.spyOn(window.history, 'pushState');
+  render(
+    <MummaAuthProvider client={client}>
+      <MummaHeader appName="Forward" onHomeNavigate={onHomeNavigate} />
+    </MummaAuthProvider>
+  );
+  const notPrevented = fireEvent.click(screen.getByRole('link', { name: /^home$/i }));
+  expect(notPrevented).toBe(false);
+  expect(onHomeNavigate).toHaveBeenCalledTimes(1);
+  expect(pushState).not.toHaveBeenCalled();
+  pushState.mockRestore();
+});
+
+test('homeHref overrides the destination; cross-origin falls through to href', () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true, status: 200, json: async () => ({ authenticated: false }),
+  }));
+  const supabase = { auth: { setSession: vi.fn().mockResolvedValue({}), signOut: vi.fn(), getSession: vi.fn().mockResolvedValue({ data: { session: null } }) } };
+  const client = new AuthClient({ supabase: supabase as any, authBaseUrl: 'https://auth.test' });
+  const pushState = vi.spyOn(window.history, 'pushState');
+  const { unmount } = render(
+    <MummaAuthProvider client={client}>
+      <MummaHeader appName="Forward" homeHref="/dashboard" />
+    </MummaAuthProvider>
+  );
+  const home = screen.getByRole('link', { name: /^home$/i });
+  expect(home.getAttribute('href')).toBe('/dashboard');
+  fireEvent.click(home);
+  expect(pushState).toHaveBeenCalledWith(null, '', '/dashboard');
+  unmount();
+
+  pushState.mockClear();
+  render(
+    <MummaAuthProvider client={client}>
+      <MummaHeader appName="Forward" homeHref="https://elsewhere.example/home" />
+    </MummaAuthProvider>
+  );
+  const external = screen.getByRole('link', { name: /^home$/i });
+  const swallow = (e: Event) => e.preventDefault();
+  document.addEventListener('click', swallow);
+  fireEvent.click(external);
+  expect(pushState).not.toHaveBeenCalled();
+  document.removeEventListener('click', swallow);
+  pushState.mockRestore();
+});
+
 test('gear menu exposes account link and sign out', async () => {
   const { signOutSpy } = renderHeader();
   fireEvent.click(screen.getByRole('button', { name: /settings/i }));

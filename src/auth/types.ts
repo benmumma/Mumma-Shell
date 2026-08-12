@@ -32,14 +32,35 @@ export interface HouseholdBlock {
 
 export type AppAccessMap = Record<string, boolean>;
 
-export interface SubscriptionInfo {
-  hasForwardAccess: boolean;
-  hasFullSiteAccess: boolean;
-  hasMealMateAccess: boolean;
-  hasIntellectAccess: boolean;
-  hasPremiumAccess: boolean;
-  apps: Array<{ app: string; status?: string; plan_type?: string }>;
+/** Household-level plan as reported by the auth service. */
+export interface HouseholdPlan {
+  plan: 'free' | 'household';
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | null;
+  agent_slot_quantity: number;
+  byok_enabled: boolean;
+  current_period_end: string | null;
 }
+
+/** Per-app plan/subscription row. */
+export interface AppPlan {
+  app_identifier: string;
+  status: string;
+  current_period_end: string | null;
+}
+
+/**
+ * The `subscription` block from `GET /api/auth-status`, carried into client
+ * state verbatim. Legacy boolean flags (`hasForwardAccess`, etc.) are still
+ * present on the wire and reachable via the index signature.
+ */
+export interface SubscriptionBlock {
+  household: HouseholdPlan | null;
+  app_plans: AppPlan[];
+  [legacyFlag: string]: unknown;
+}
+
+/** @deprecated Use {@link SubscriptionBlock} — legacy flags moved behind an index signature. */
+export type SubscriptionInfo = SubscriptionBlock;
 
 export interface AuthStatusResponse {
   authenticated: boolean;
@@ -47,7 +68,7 @@ export interface AuthStatusResponse {
   user: AuthUser | null;
   session: AuthSession;
   appAccess?: AppAccessMap;
-  subscription?: SubscriptionInfo | null;
+  subscription?: SubscriptionBlock | null;
   household?: HouseholdBlock;
   tokenSource?: 'cookie' | 'bearer' | 'refreshed' | 'expired' | null;
   issuer?: { expected: string | null; actual: string | null };
@@ -64,7 +85,7 @@ export interface AuthState {
   user: AuthUser | null;
   session: AuthSession | null;
   appAccess: AppAccessMap;
-  subscription: SubscriptionInfo | null;
+  subscription: SubscriptionBlock | null;
   household: HouseholdBlock | null;
   /** true when the last check was inconclusive (network/5xx/retryable) and state was carried over */
   stale: boolean;

@@ -3,7 +3,14 @@ export interface MummaApp {
   name: string;
   url: string;
   iconSrc: string;
-  /** appAccess key that must be truthy for this entry to render; omit for always-visible */
+  /**
+   * Access-gated entry: HIDDEN from the switcher (not locked/greyed) unless
+   * `appAccess[requiresAppAccess]` is truthy. Non-gated entries always render.
+   * When appAccess is unavailable (standalone header), gated entries are
+   * omitted — fail-closed.
+   */
+  gated?: boolean;
+  /** appAccess key that must be truthy for a gated entry to render. Setting this implies `gated`. */
   requiresAppAccess?: string;
 }
 
@@ -24,5 +31,8 @@ export const MUMMA_APPS: MummaApp[] = [
   { key: 'rem', name: 'REM', url: 'https://rem.mumma.co', iconSrc: icon('rem') },
   { key: 'scholarquest', name: 'ScholarQuest', url: 'https://scholar.mumma.co', iconSrc: icon('scholarquest') },
   { key: 'fitter', name: 'Fitter', url: 'https://fitter.mumma.co', iconSrc: icon('fitter') },
-  { key: 'admin', name: 'Mission Control', url: 'https://admin.mumma.co', iconSrc: icon('admin'), requiresAppAccess: 'platform-admin' },
+  // Pick'em lives inside Mumapps-Client, served under www.mumma.co/pickem
+  { key: 'pickem', name: "Pick'em", url: 'https://www.mumma.co/pickem', iconSrc: icon('pickem') },
+  { key: 'stonk', name: 'Stonk Master', url: 'https://stonk.mumma.co', iconSrc: icon('stonk'), gated: true, requiresAppAccess: 'stonk' },
+  { key: 'admin', name: 'Mission Control', url: 'https://admin.mumma.co', iconSrc: icon('admin'), gated: true, requiresAppAccess: 'platform-admin' },
 ];

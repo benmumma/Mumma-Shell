@@ -69,15 +69,31 @@ import { MummaHeader } from '@mumma/shell/header';
 
 The app name renders as an app switcher by default — a dropdown listing every
 Mumma app (built-in `MUMMA_APPS` registry: Dekko, Forward, Intellect,
-MealMate, Library, Arcade, REM, ScholarQuest, Fitter) with icons hotlinked
+MealMate, Library, Arcade, REM, ScholarQuest, Fitter, Pick'em, plus the
+access-gated Stonk Master and Mission Control) with icons hotlinked
 from `https://www.mumma.co/new_logos/[app_name]_live.png`. Icons that fail to load
 (e.g. not uploaded yet) fall back to the Mumma Labs mark at runtime, so new
 icons appear without a package release.
 
+Registry entries may be access-gated: entries with `gated: true` (implied by
+`requiresAppAccess`) are HIDDEN from the switcher — not locked or greyed —
+unless `appAccess[requiresAppAccess]` is truthy. The header reads `appAccess`
+from the surrounding `MummaAuthProvider`; pass an explicit `appAccess` prop to
+override it (the prop wins). If neither is available (standalone header),
+gated entries are omitted — fail-closed.
+
 - `appKey` — registry key of the current app; highlights it in the switcher
   and uses its registry icon when `logoSrc` is omitted.
-- `homeUrl` — where the logo links to; defaults to `/` (the app's own
-  homepage). The logo is always a link, so clicking it returns users home.
+- `homeHref` — where the brand icon links to; defaults to `/` (the CURRENT
+  site's home). A plain same-origin left-click is turned into a fast SPA
+  navigation — `history.pushState` plus a synthetic `popstate` event — so
+  React-Router/wouter apps re-render without a full reload; modified clicks,
+  cross-origin destinations, and non-SPA apps fall back to the plain `href`
+  navigation. (`homeUrl` is a deprecated alias.)
+- `onHomeNavigate` — callback that replaces the default brand-icon click
+  behavior entirely (e.g. `() => navigate('/')`).
+- `appAccess` — appAccess map used to filter gated entries; overrides the
+  value read from the auth context.
 - `logoSrc` — explicit header icon; omit to use the registry icon, falling
   back to the Mumma Labs mark.
 - `apps` — override the switcher's app list (`MummaApp[]`).
@@ -101,5 +117,5 @@ await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.mem
 ## Package layout
 
 - `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, and the contract's TypeScript types.
-- `./react` — `MummaAuthProvider`, `useAuth`, `useSession`, `useHousehold`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
+- `./react` — `MummaAuthProvider`, `useAuth`, `useOptionalAuth`, `useSession`, `useHousehold`, `useSubscription`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
 - `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { useAuth } from '../react/AuthProvider';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { useOptionalAuth } from '../react/AuthProvider';
 import { resolveAuthBaseUrl } from '../auth/urls';
+import type { AppAccessMap } from '../auth/types';
 import { MUMMA_APPS, MUMMA_LABS_ICON, type MummaApp } from './apps';
 
 export interface MummaHeaderProps {
@@ -8,8 +9,30 @@ export interface MummaHeaderProps {
   /** Registry key of the current app — highlights it in the switcher and picks its icon */
   appKey?: string;
   logoSrc?: string;
-  /** Where the logo links to; defaults to `/` (the app's own homepage) */
+  /**
+   * Where the brand icon links to; defaults to `/` — the CURRENT site's home.
+   * By default a plain left-click is intercepted and turned into a fast SPA
+   * navigation (`history.pushState` + a synthetic `popstate` event) so
+   * React-Router/wouter apps re-render without a full reload; modified clicks
+   * (new tab etc.), cross-origin destinations, and non-SPA apps fall back to
+   * the normal `href` navigation. Override the destination with `homeHref`,
+   * or replace the click behavior entirely with `onHomeNavigate`.
+   */
+  homeHref?: string;
+  /** @deprecated Use `homeHref` — same meaning, kept for back-compat */
   homeUrl?: string;
+  /**
+   * Replaces the DEFAULT brand-icon click behavior entirely: the click is
+   * prevented and this callback runs instead (e.g. `() => navigate('/')`).
+   */
+  onHomeNavigate?: () => void;
+  /**
+   * appAccess map used to filter access-gated registry entries. When omitted,
+   * the header reads appAccess from the surrounding `<MummaAuthProvider>`;
+   * an explicit prop wins over context. If neither is available (standalone
+   * header usage), gated entries are omitted — fail-closed.
+   */
+  appAccess?: AppAccessMap;
   /** Apps shown in the switcher; defaults to the built-in MUMMA_APPS registry */
   apps?: MummaApp[];
   /** Set false to render the app name as a plain title instead of a switcher */
@@ -147,21 +170,48 @@ function AppIcon({ src, alt, style }: { src: string; alt: string; style: CSSProp
 }
 
 export function MummaHeader({
-  appName, appKey, logoSrc, homeUrl = '/', apps = MUMMA_APPS, appSwitcher = true,
+  appName, appKey, logoSrc, homeHref, homeUrl, onHomeNavigate, appAccess: appAccessProp,
+  apps = MUMMA_APPS, appSwitcher = true,
   dekkoUrl, familyUrl, accountUrl, children, actions, menuItems,
 }: MummaHeaderProps) {
   const dekko = dekkoUrl ?? familyUrl;
-  const { signOut, user, client, appAccess } = useAuth();
+  // Header works standalone (outside MummaAuthProvider): auth becomes null and
+  // auth-dependent chrome degrades gracefully.
+  const auth = useOptionalAuth();
+  const user = auth?.user ?? null;
   const [gearOpen, setGearOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
-  const account = accountUrl ?? `${client.authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
+  const account = accountUrl ?? `${auth?.client.authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
 
   const currentApp = apps.find(a => appKey ? a.key === appKey : a.name.toLowerCase() === appName.toLowerCase());
   const iconSrc = logoSrc ?? currentApp?.iconSrc ?? MUMMA_LABS_ICON;
-  // Access-gated entries only appear in the switcher when the auth state grants them;
-  // the current-app icon lookup above intentionally stays unfiltered.
-  const visibleApps = apps.filter(a => !a.requiresAppAccess || !!appAccess?.[a.requiresAppAccess]);
+  // Access-gated entries are HIDDEN (not locked/greyed) unless appAccess grants
+  // them; an explicit appAccess prop wins over the auth context, and with
+  // neither available gated entries are omitted (fail-closed). Setting
+  // requiresAppAccess implies gated. The current-app icon lookup above
+  // intentionally stays unfiltered.
+  const effectiveAppAccess = appAccessProp ?? auth?.appAccess;
+  const visibleApps = apps.filter(a => {
+    const gated = a.gated ?? !!a.requiresAppAccess;
+    if (!gated) return true;
+    return !!a.requiresAppAccess && !!effectiveAppAccess?.[a.requiresAppAccess];
+  });
+
+  // Brand-icon fastlink: same-origin plain left-clicks become a pushState +
+  // popstate SPA navigation; everything else falls through to the href.
+  const homeDest = homeHref ?? homeUrl ?? '/';
+  const onHomeClick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented) return;
+    if (onHomeNavigate) { e.preventDefault(); onHomeNavigate(); return; }
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    let dest: URL;
+    try { dest = new URL(homeDest, window.location.href); } catch { return; }
+    if (dest.origin !== window.location.origin) return;
+    e.preventDefault();
+    window.history.pushState(null, '', dest.pathname + dest.search + dest.hash);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
 
   const anyOpen = gearOpen || switcherOpen;
   useEffect(() => {
@@ -181,7 +231,7 @@ export function MummaHeader({
 
   return (
     <header ref={rootRef} style={{ ...styles.bar, position: 'relative' }}>
-      <a href={homeUrl} style={styles.logoLink} aria-label="Home" title={`${appName} home`}>
+      <a href={homeDest} onClick={onHomeClick} style={styles.logoLink} aria-label="Home" title={`${appName} home`}>
         <AppIcon src={iconSrc} alt={`${appName} logo`} style={styles.logo} />
       </a>
       {appSwitcher ? (
@@ -229,7 +279,7 @@ export function MummaHeader({
           {user?.email && <span style={{ ...styles.item, opacity: 0.6, cursor: 'default' }}>{user.email}</span>}
           {menuItems}
           <MummaMenuItem href={account}>Account</MummaMenuItem>
-          <MummaMenuItem onClick={() => signOut()}>Sign out</MummaMenuItem>
+          <MummaMenuItem onClick={() => auth?.signOut()}>Sign out</MummaMenuItem>
         </nav>
       )}
     </header>

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
 import type { AuthClient } from '../auth/AuthClient';
-import type { AuthState, HouseholdBlock } from '../auth/types';
+import type { AuthState, HouseholdBlock, SubscriptionBlock } from '../auth/types';
 
 interface Ctx { client: AuthClient; state: AuthState; }
 const AuthContext = createContext<Ctx | null>(null);
@@ -18,12 +18,11 @@ export function MummaAuthProvider({ client, children }: { client: AuthClient; ch
 
 function useCtx(): Ctx {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth/useSession/useHousehold must be used inside <MummaAuthProvider>');
+  if (!ctx) throw new Error('useAuth/useSession/useHousehold/useSubscription must be used inside <MummaAuthProvider>');
   return ctx;
 }
 
-export function useAuth() {
-  const { client, state } = useCtx();
+function buildAuth({ client, state }: Ctx) {
   return {
     ...state,
     isLoading: state.status === 'loading',
@@ -37,5 +36,20 @@ export function useAuth() {
   };
 }
 
+export function useAuth() {
+  return buildAuth(useCtx());
+}
+
+/**
+ * Like `useAuth`, but returns `null` instead of throwing when rendered outside
+ * `<MummaAuthProvider>`. Lets shared chrome (e.g. `MummaHeader`) degrade
+ * gracefully in standalone usage.
+ */
+export function useOptionalAuth(): ReturnType<typeof buildAuth> | null {
+  const ctx = useContext(AuthContext);
+  return ctx ? buildAuth(ctx) : null;
+}
+
 export const useSession = () => useCtx().state.session;
 export const useHousehold = (): HouseholdBlock | null => useCtx().state.household;
+export const useSubscription = (): SubscriptionBlock | null => useCtx().state.subscription;
