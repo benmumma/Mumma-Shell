@@ -99,6 +99,38 @@ gated entries are omitted — fail-closed.
 - `apps` — override the switcher's app list (`MummaApp[]`).
 - `appSwitcher={false}` — plain static title, no dropdown.
 
+### Billing
+
+`useBilling()` folds the raw `subscription` block into the same plan semantics
+the server enforces in `entitlements/tierLimits.js` — so no app has to re-derive
+"are they past due / which plan / do they have a standalone sub" itself.
+
+```jsx
+import { useBilling } from '@mumma/shell/react';
+
+const { plan, coveredByFamilyPlan, hasStandalone, inGrace, slots, byokEnabled, renewsAt } = useBilling();
+if (!coveredByFamilyPlan && !hasStandalone('intellect')) return <Upsell />;
+if (inGrace) return <PaymentBanner renewsAt={renewsAt} />;
+```
+
+A status is **live** when it is `active`/`trialing`, or `past_due` within
+`GRACE_DAYS` (7) of `current_period_end` — a `past_due` row with no period end
+stays live. Stripe marks a sub `past_due` on the first failed payment while its
+own dunning retries run, so grace keeps a card expiry from reading as a
+cancellation.
+
+- `plan` — `'household'` only when the household row is live; otherwise `'free'`.
+- `status` / `isPastDue` / `inGrace` — the raw household status, whether it is
+  `past_due`, and whether that past-due row is still inside grace.
+- `coveredByFamilyPlan` — the family plan covers every app by construction.
+- `standalone` / `hasStandalone(app)` — LIVE per-app plans, keyed by
+  `app_identifier`; `appPlans` keeps every row, live or not.
+- `slots`, `byokEnabled`, `renewsAt` — pass-throughs from the household row.
+
+The pure form is `deriveBilling(subscription, now?)` from `@mumma/shell/auth`,
+alongside `isLiveStatus(row, now?)` and `GRACE_DAYS`, for non-React callers.
+This is read-side only: it drives chrome and upsells, never enforcement.
+
 Optional acting-as-member decoration (client state only, not auth):
 
 ```jsx
@@ -116,6 +148,6 @@ await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.mem
 
 ## Package layout
 
-- `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, and the contract's TypeScript types.
-- `./react` — `MummaAuthProvider`, `useAuth`, `useOptionalAuth`, `useSession`, `useHousehold`, `useSubscription`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
+- `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, the `deriveBilling`/`isLiveStatus` plan helpers, and the contract's TypeScript types.
+- `./react` — `MummaAuthProvider`, `useAuth`, `useOptionalAuth`, `useSession`, `useHousehold`, `useSubscription`, `useBilling`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
 - `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.
