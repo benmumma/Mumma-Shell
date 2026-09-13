@@ -1,4 +1,4 @@
-import type { AuthClientConfig, AuthState, AuthStatusResponse, SupabaseAuthLike } from './types';
+import type { AuthClientConfig, AuthClientLike, AuthState, AuthStatusResponse, SupabaseAuthLike } from './types';
 import { readSessionMarker } from './marker';
 import { resolveAuthBaseUrl, buildSignInUrl, buildLogoutUrl, buildBridgeUrl } from './urls';
 import { consumeBridgeHash } from './bridge';
@@ -24,7 +24,7 @@ function defaultIsStandalone(): boolean {
  *  3. Transient failures (retryable/non-2xx/network) carry state forward, never log out.
  *  4. Cross-app sync via the mumapps_sid marker on focus/visibilitychange.
  */
-export class AuthClient {
+export class AuthClient implements AuthClientLike {
   private supabase: SupabaseAuthLike;
   readonly authBaseUrl: string;
   private isStandalone: () => boolean;
