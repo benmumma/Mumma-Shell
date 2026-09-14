@@ -80,7 +80,12 @@ export interface AuthStatusResponse {
 }
 
 export interface AuthState {
-  status: 'loading' | 'ready';
+  /**
+   * `signing-in` is set only by the native client (`@mumma/shell/native`),
+   * which cannot redirect: the app routes to its own sign-in screen when it
+   * sees it. Web callers see only `loading` and `ready`.
+   */
+  status: 'loading' | 'ready' | 'signing-in';
   authenticated: boolean;
   user: AuthUser | null;
   session: AuthSession | null;
@@ -89,6 +94,23 @@ export interface AuthState {
   household: HouseholdBlock | null;
   /** true when the last check was inconclusive (network/5xx/retryable) and state was carried over */
   stale: boolean;
+}
+
+/**
+ * The surface `MummaAuthProvider` consumes. `AuthClient` (web) and
+ * `NativeAuthClient` (`@mumma/shell/native`) both satisfy it, so an app swaps
+ * one for the other without touching the provider or any hook.
+ */
+export interface AuthClientLike {
+  readonly authBaseUrl: string;
+  getState(): AuthState;
+  subscribe(fn: (s: AuthState) => void): () => void;
+  start(): Promise<AuthState>;
+  stop(): void;
+  checkAuthStatus(): Promise<AuthState>;
+  signIn(returnTo?: string, mode?: 'signup'): void | Promise<void>;
+  signOut(returnUrl?: string): void | Promise<void>;
+  getAuthHeaders(): Record<string, string>;
 }
 
 /** Minimal Supabase surface the core needs — keeps the package testable without a real client. */

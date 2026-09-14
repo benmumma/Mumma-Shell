@@ -1,11 +1,10 @@
 import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from 'react';
-import type { AuthClient } from '../auth/AuthClient';
-import type { AuthState, HouseholdBlock, SubscriptionBlock } from '../auth/types';
+import type { AuthClientLike, AuthState, HouseholdBlock, SubscriptionBlock } from '../auth/types';
 
-interface Ctx { client: AuthClient; state: AuthState; }
+interface Ctx { client: AuthClientLike; state: AuthState; }
 const AuthContext = createContext<Ctx | null>(null);
 
-export function MummaAuthProvider({ client, children }: { client: AuthClient; children: ReactNode }) {
+export function MummaAuthProvider({ client, children }: { client: AuthClientLike; children: ReactNode }) {
   const [state, setState] = useState<AuthState>(client.getState());
   useEffect(() => {
     const unsubscribe = client.subscribe(setState);

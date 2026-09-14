@@ -1,13 +1,13 @@
 # @mumma/shell
 
-Client-side implementation of the Mumapps Auth v4 contract: a framework-agnostic auth core (`./auth`), a thin React provider/hooks layer (`./react`), and an optional shared app header (`./header`). Any `*.mumma.co` app should consume this package instead of hand-rolling auth-status polling, token hydration, and cross-app logout sync.
+Client-side implementation of the Mumapps Auth v4 contract: a framework-agnostic auth core (`./auth`), a thin React provider/hooks layer (`./react`), an optional shared app header (`./header`), and a device-local client for Capacitor shells (`./native`). Any `*.mumma.co` app should consume this package instead of hand-rolling auth-status polling, token hydration, and cross-app logout sync.
 
 The authoritative contract this package implements is documented in **[`Mumapps-Auth/docs/CONTRACT.md`](../Mumapps-Auth/docs/CONTRACT.md)** — read "The Four Invariants" before integrating or modifying this package.
 
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.3.3/mumma-shell-0.3.3.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.6.0/mumma-shell-0.6.0.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -140,6 +140,81 @@ const { acting, setActing, decorate } = useActingMember();
 await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.member_id ?? null
 ```
 
+## Native apps (`@mumma/shell/native`)
+
+Capacitor shells cannot use the web session: a WKWebView has no cookie for
+`auth.mumma.co`, and the web's single rotating refresh token must never be
+refreshed from a second place (Invariant 1). So a native app gets its **own
+device-local Supabase session** — its own refresh-token family, stored in
+Keychain/Keystore — and `NativeAuthClient` satisfies the same interface
+`MummaAuthProvider` consumes, so the provider, the hooks and every view stay
+untouched (C-006 rule 3).
+
+This package never depends on `@capacitor/*`. The app injects the secure
+storage adapter and the Apple credential function.
+
+```js
+// src/shared/native/auth.js (Arcade) — only this file imports Capacitor plugins.
+import { NativeAuthClient } from '@mumma/shell/native';
+import { SecureStoragePlugin } from 'capacitor-secure-storage-plugin';
+import { SignInWithApple } from '@capacitor-community/apple-sign-in';
+
+const keychain = {
+  getItem: async (key) => {
+    try { return (await SecureStoragePlugin.get({ key })).value; } catch { return null; }
+  },
+  setItem: async (key, value) => { await SecureStoragePlugin.set({ key, value }); },
+  removeItem: async (key) => { try { await SecureStoragePlugin.remove({ key }); } catch {} },
+};
+
+export const nativeAuthClient = new NativeAuthClient({
+  supabaseUrl: process.env.REACT_APP_SUPABASE_URL,
+  supabaseKey: process.env.REACT_APP_SUPABASE_ANON_KEY, // public by contract
+  storage: keychain,
+  authBaseUrl: 'https://auth.mumma.co',   // the WebView's hostname is 'localhost' — pass it
+  appleCredential: async () => {
+    const nonce = crypto.randomUUID();
+    const res = await SignInWithApple.authorize({ clientId: 'co.mumma.arcade', scopes: 'email', nonce });
+    return { identityToken: res.response.identityToken, nonce };
+  },
+});
+```
+
+```jsx
+// The provider takes it exactly like the web client…
+<MummaAuthProvider client={nativeAuthClient}><App /></MummaAuthProvider>
+
+// …and the sign-in route renders the shared screen.
+import { NativeSignIn } from '@mumma/shell/native';
+
+<NativeSignIn appName="Arcade" onSignedIn={() => navigate('/')} />
+```
+
+- `new NativeAuthClient({ supabaseUrl, supabaseKey, storage, authBaseUrl?, appleCredential? })` —
+  creates its own Supabase client (`persistSession: true`, `autoRefreshToken: true`,
+  `detectSessionInUrl: false`, your `storage`) and exposes it as `.supabase`.
+- Same surface as `AuthClient`: `getState`, `subscribe`, `start`, `stop`,
+  `checkAuthStatus`, `signIn`, `signOut`, `getAuthHeaders`, `authBaseUrl`.
+- Native-only: `requestEmailCode(email)` (`shouldCreateUser: false` — sign-up
+  stays on the web), `verifyEmailCode(email, code)`, `signInWithApple()`,
+  `canUseApple`, and the `isNativeAuthClient(client)` guard.
+- `signIn()` does **not** navigate: it sets `status: 'signing-in'` so the app
+  routes to its own sign-in screen. `signOut()` is `signOut({ scope: 'local' })`
+  plus a storage wipe — never `/api/logout`.
+- `checkAuthStatus()` reads the device session, then calls
+  `GET /api/auth-status` with `Authorization: Bearer` and `credentials: 'omit'`
+  — entitlements still come from `auth.mumma.co` (C-003), no cookie is read or
+  written. Transient failure carries state forward with `stale: true`; an
+  expired bearer is retried once after a local refresh, then signs out. There is
+  no wake watcher: call `checkAuthStatus()` from the app's `appStateChange`.
+- `NativeSignIn` props: `appName`, `title`, `helpText`, `onSignedIn`, `client`
+  (omit inside a provider). Email code first, Apple button only when
+  `appleCredential` was injected. No password field, ever.
+
+Requires Supabase config: a Magic Link email template containing `{{ .Token }}`
+(so a 6-digit code is sent) and, for the Apple button, the Apple provider with
+the app's bundle id in its authorized client ids.
+
 ## What this package will never do
 
 - **No client-side token refresh.** `auth.mumma.co` is the only refresher (Invariant 1 of the contract). Renewal is always re-calling `GET /api/auth-status`, never `supabase.auth.refreshSession()`.
@@ -150,4 +225,7 @@ await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.mem
 
 - `./auth` — `AuthClient` (single-flight status checks, expiry timer, marker-cookie wake watcher, PWA bridge-hash consumption), URL builders, the `deriveBilling`/`isLiveStatus` plan helpers, and the contract's TypeScript types.
 - `./react` — `MummaAuthProvider`, `useAuth`, `useOptionalAuth`, `useSession`, `useHousehold`, `useSubscription`, `useBilling`, and the acting-member decoration layer (`ActingMemberProvider`, `useActingMember`).
+- `./native` — `NativeAuthClient` (device-local Supabase session, bearer-only
+  auth-status, email one-time code, Sign in with Apple) and the shared
+  `NativeSignIn` screen, for Capacitor shells. Zero `@capacitor/*` dependencies.
 - `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.
