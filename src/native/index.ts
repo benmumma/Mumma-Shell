@@ -1,6 +1,8 @@
 export {
   NativeAuthClient,
   isNativeAuthClient,
+  AppleNotLinkedError,
+  isAppleNotLinkedError,
   DEFAULT_NATIVE_AUTH_BASE_URL,
   type NativeAuthClientConfig,
   type NativeSecureStorage,
