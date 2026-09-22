@@ -3,7 +3,24 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 const createClient = vi.fn();
 vi.mock('@supabase/supabase-js', () => ({ createClient: (...args: unknown[]) => createClient(...args) }));
 
-import { NativeAuthClient, isNativeAuthClient } from '../../src/native/NativeAuthClient';
+import {
+  NativeAuthClient, isNativeAuthClient, isAppleNotLinkedError,
+} from '../../src/native/NativeAuthClient';
+
+/**
+ * Routes the two calls Apple sign-in makes: the precheck, then auth-status.
+ * `precheck` is whatever Response-ish the case wants back from the endpoint.
+ */
+function applePrecheckFetch(precheck: any) {
+  return vi.fn((url: string) => {
+    if (String(url).includes('/api/auth/apple-precheck')) {
+      return typeof precheck === 'function' ? precheck() : Promise.resolve(precheck);
+    }
+    return Promise.resolve(bearerOk());
+  });
+}
+
+const known = (value: boolean) => ({ ok: true, status: 200, json: async () => ({ known: value }) });
 
 const LOCAL = { access_token: 'device-at', refresh_token: 'device-rt', expires_at: 9999999999 };
 
@@ -375,6 +392,58 @@ describe('sign in with Apple', () => {
     const { client, supabase } = makeClient({ appleCredential: async () => ({ identityToken: 'id-tok' }) });
     supabase.auth.signInWithIdToken.mockResolvedValue({ error: { message: 'Unacceptable audience' } });
     await expect(client.signInWithApple()).rejects.toThrow('Unacceptable audience');
+  });
+
+  test('prechecks the identity token before completing the sign-in', async () => {
+    const fetchMock = applePrecheckFetch(known(true));
+    vi.stubGlobal('fetch', fetchMock);
+    const { client, supabase } = makeClient({ appleCredential: async () => ({ identityToken: 'id-tok' }) });
+    const state = await client.signInWithApple();
+
+    const [url, init] = fetchMock.mock.calls[0] as any[];
+    expect(url).toBe('https://auth.test/api/auth/apple-precheck');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('omit');
+    expect(JSON.parse(init.body)).toEqual({ identity_token: 'id-tok' });
+    expect(supabase.auth.signInWithIdToken).toHaveBeenCalled();
+    expect(state.authenticated).toBe(true);
+  });
+
+  test('known: false stops before signInWithIdToken — no stray account is minted', async () => {
+    vi.stubGlobal('fetch', applePrecheckFetch(known(false)));
+    const { client, supabase } = makeClient({ appleCredential: async () => ({ identityToken: 'id-tok' }) });
+
+    const err = await client.signInWithApple().catch((e) => e);
+    expect(isAppleNotLinkedError(err)).toBe(true);
+    expect(err.message).toMatch(/No Mumma account is linked to this Apple ID/);
+    expect(err.linkUrl).toBe('https://auth.test/manage-account#sign-in-methods');
+    expect(supabase.auth.signInWithIdToken).not.toHaveBeenCalled();
+  });
+
+  test('a precheck outage fails OPEN: 503, 429 and a dead network all sign in', async () => {
+    const cases = [
+      { ok: false, status: 503, json: async () => ({}) },
+      { ok: false, status: 429, json: async () => ({}) },
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    ];
+    for (const c of cases) {
+      vi.stubGlobal('fetch', applePrecheckFetch(c));
+      const { client, supabase } = makeClient({ appleCredential: async () => ({ identityToken: 'id-tok' }) });
+      const state = await client.signInWithApple();
+      expect(supabase.auth.signInWithIdToken).toHaveBeenCalled();
+      expect(state.authenticated).toBe(true);
+    }
+  });
+
+  test('a 400 (bad token) is the generic Apple failure, not the linking message', async () => {
+    vi.stubGlobal('fetch', applePrecheckFetch({
+      ok: false, status: 400, json: async () => ({ error: 'bad_token', message: 'malformed' }),
+    }));
+    const { client, supabase } = makeClient({ appleCredential: async () => ({ identityToken: 'nope' }) });
+    const err = await client.signInWithApple().catch((e) => e);
+    expect(isAppleNotLinkedError(err)).toBe(false);
+    expect(err.message).toMatch(/Sign in with Apple did not work/);
+    expect(supabase.auth.signInWithIdToken).not.toHaveBeenCalled();
   });
 });
 

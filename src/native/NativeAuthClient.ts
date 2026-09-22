@@ -78,6 +78,33 @@ function friendlyPasswordError(message: string): string {
   return message || 'Something went wrong. Try again.';
 }
 
+const APPLE_GENERIC = 'Sign in with Apple did not work. Try again, or sign in with a code.';
+
+const APPLE_NOT_LINKED =
+  'No Mumma account is linked to this Apple ID. Sign in with a code or password, then link '
+  + 'your Apple ID at mumma.co.';
+
+/**
+ * A definite `known: false` from the precheck: this Apple ID matches no
+ * account, and completing the sign-in would mint a stray empty one. Carries
+ * the web page where the member links it to the account they already have.
+ */
+export class AppleNotLinkedError extends Error {
+  readonly code = 'apple_not_linked';
+  readonly linkUrl: string;
+  constructor(linkUrl: string) {
+    super(APPLE_NOT_LINKED);
+    this.name = 'AppleNotLinkedError';
+    this.linkUrl = linkUrl;
+  }
+}
+
+/** Duck-typed so it survives a bundle boundary. */
+export function isAppleNotLinkedError(e: unknown): e is AppleNotLinkedError {
+  return !!e && (e as AppleNotLinkedError).code === 'apple_not_linked'
+    && typeof (e as AppleNotLinkedError).linkUrl === 'string';
+}
+
 /**
  * Native/device counterpart of {@link AuthClient}: a SECOND session family that
  * lives only on this device (C-006 rule 3, `_suite/mobile/NATIVE-AUTH-PLAN.md` §1).
@@ -308,13 +335,54 @@ export class NativeAuthClient implements AuthClientLike {
     return this.checkAuthStatus();
   }
 
-  /** Native Sign in with Apple: the app's credential function → `signInWithIdToken`. */
+  /** Where a member links an Apple ID to the account they already have. */
+  get appleLinkUrl(): string {
+    return `${this.authBaseUrl.replace(/\/+$/, '')}/manage-account#sign-in-methods`;
+  }
+
+  /**
+   * Asks auth.mumma.co whether this Apple identity matches an account BEFORE
+   * the sign-in completes — Supabase would otherwise create a new, empty user
+   * for an unmatched Apple ID and strand the member's household on the old one.
+   *
+   * FAILS OPEN on purpose: a rate limit, an outage or a dead network answers
+   * 'unavailable' and the sign-in proceeds exactly as it did before the
+   * endpoint existed. Only a definite `known: false` blocks. The token is
+   * posted and never logged.
+   */
+  private async applePrecheck(identityToken: string): Promise<'known' | 'unknown' | 'bad-token' | 'unavailable'> {
+    try {
+      const res = await fetch(`${this.authBaseUrl}/api/auth/apple-precheck`, {
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ identity_token: identityToken }),
+      });
+      if (res.status === 400) return 'bad-token';
+      if (!res.ok) return 'unavailable';              // 429, 502, 503 → fail open
+      const data = await res.json();
+      return data?.known === false ? 'unknown' : 'known';
+    } catch {
+      return 'unavailable';                           // network error → fail open
+    }
+  }
+
+  /**
+   * Native Sign in with Apple: the app's credential function → a precheck
+   * against auth.mumma.co → `signInWithIdToken`.
+   */
   async signInWithApple(): Promise<AuthState> {
     if (!this.appleCredential) {
       throw new Error('Sign in with Apple is unavailable: no appleCredential function was passed to NativeAuthClient.');
     }
     const credential = await this.appleCredential();
     if (!credential?.identityToken) throw new Error('Sign in with Apple returned no identity token.');
+
+    const verdict = await this.applePrecheck(credential.identityToken);
+    if (verdict === 'unknown') throw new AppleNotLinkedError(this.appleLinkUrl);
+    if (verdict === 'bad-token') throw new Error(APPLE_GENERIC);
+
     const { error } = await this.supabase.auth.signInWithIdToken({
       provider: 'apple', token: credential.identityToken, nonce: credential.nonce,
     });

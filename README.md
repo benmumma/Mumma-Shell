@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.7.0/mumma-shell-0.7.0.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.7.1/mumma-shell-0.7.1.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -210,11 +210,21 @@ they already use on the web; "Use a code instead" goes back. `signInWithPassword
 lands the same device-local session the code path lands, in the same Keychain
 storage. Sign-**up** is still web-only, so this screen never creates an account.
 
+`signInWithApple()` prechecks the credential against
+`POST {authBaseUrl}/api/auth/apple-precheck` before it completes: an Apple ID
+that matches no account would otherwise mint a new, empty user and strand the
+member's household on the old one. A definite `known: false` throws
+`AppleNotLinkedError` (guard: `isAppleNotLinkedError`), which the screen renders
+under the Apple button with a link to
+`{authBaseUrl}/manage-account#sign-in-methods`, and nothing is sent to Supabase.
+Everything else — a rate limit, a 5xx, a dead network — **fails open** and signs
+in as before, so a flaky auth site never locks anyone out.
+
 - `appName` / `title` / `helpText` — the app's own words.
 - `onSignedIn` — route away once the session is live.
 - `resetPasswordUrl` — where "Forgot password?" goes; defaults to the client's
   `authBaseUrl` + `/login`, which is where the web keeps the reset button.
-- `openExternal(url)` — how that link is opened. The default is `window.open`,
+- `openExternal(url)` — how that link (and "Link your Apple ID on the web") is opened. The default is `window.open`,
   which each app's native bootstrap already routes into the in-app browser;
   pass a function to open the sheet directly. The shell itself imports no
   Capacitor plugin (C-006 rule 2).

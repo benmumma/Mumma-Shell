@@ -4,6 +4,17 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.7.1 — Sign in with Apple never mints a stray account
+
+- `signInWithApple()` posts the identity token to
+  `{authBaseUrl}/api/auth/apple-precheck` before `signInWithIdToken`. A definite
+  `known: false` throws `AppleNotLinkedError` (with `linkUrl` for
+  `/manage-account#sign-in-methods`) and nothing reaches Supabase; a 400 is the
+  generic Apple failure; a 429, a 5xx or a dead network fails OPEN and signs in
+  exactly as before. The token is never logged.
+- `NativeSignIn` renders that state under the Apple button with a "Link your
+  Apple ID on the web" button, opened through `openExternal`.
+
 ## 0.7.0 — password sign-in on the native screen
 
 - `NativeAuthClient.signInWithPassword({ email, password })`: email + password

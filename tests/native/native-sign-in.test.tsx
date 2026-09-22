@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { NativeSignIn } from '../../src/native/NativeSignIn';
+import { AppleNotLinkedError } from '../../src/native/NativeAuthClient';
 
 function fakeClient(over: Record<string, unknown> = {}) {
   return {
@@ -153,6 +154,30 @@ describe('NativeSignIn', () => {
     fireEvent.click(screen.getByText(/Sign in with Apple/));
     await waitFor(() => expect(client.signInWithApple).toHaveBeenCalled());
     await waitFor(() => expect(onSignedIn).toHaveBeenCalled());
+  });
+
+  test('an Apple ID nobody has linked gets its own line and a way to fix it', async () => {
+    const openExternal = vi.fn();
+    const client = fakeClient({
+      canUseApple: true,
+      signInWithApple: vi.fn().mockRejectedValue(
+        new AppleNotLinkedError('https://auth.mumma.co/manage-account#sign-in-methods'),
+      ),
+    });
+    const onSignedIn = vi.fn();
+    render(<NativeSignIn client={client} onSignedIn={onSignedIn} openExternal={openExternal} />);
+
+    fireEvent.click(screen.getByText(/Sign in with Apple/));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/No Mumma account is linked to this Apple ID/);
+    expect(onSignedIn).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Link your Apple ID on the web'));
+    expect(openExternal).toHaveBeenCalledWith('https://auth.mumma.co/manage-account#sign-in-methods');
+
+    // Switching to another method clears it — it was about Apple, not this screen.
+    fireEvent.click(screen.getByText('Use a password instead'));
+    expect(screen.queryByText('Link your Apple ID on the web')).toBeNull();
   });
 
   test('sign-up is pointed at the web, and custom copy overrides the defaults', () => {

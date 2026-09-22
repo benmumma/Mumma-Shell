@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { useOptionalAuth } from '../react/AuthProvider';
-import { isNativeAuthClient, type NativeAuthClient } from './NativeAuthClient';
+import { isAppleNotLinkedError, isNativeAuthClient, type NativeAuthClient } from './NativeAuthClient';
 
 export interface NativeSignInProps {
   /** App name used in the default title/help copy, e.g. "Arcade". */
@@ -87,6 +87,10 @@ const DEFAULT_AUTH_ORIGIN = 'https://auth.mumma.co';
  * away — email + password for people who would rather type the password they
  * already use on the web.
  *
+ * Sign in with Apple is prechecked against auth.mumma.co first: an Apple ID
+ * that matches no account would otherwise mint a new, empty one, so the screen
+ * says so and points at the web page that links it instead.
+ *
  * The CODE stays the default on purpose: it is the screen Apple reviewed, it
  * works for every account, and it asks nobody to remember anything. The
  * password path is the secondary door, not the front one. Sign-UP still stays
@@ -106,6 +110,7 @@ export function NativeSignIn({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [appleUnlinked, setAppleUnlinked] = useState<{ message: string; url: string } | null>(null);
 
   if (!native) {
     return (
@@ -164,20 +169,33 @@ export function NativeSignIn({
     });
   };
 
-  const apple = () => void run(async () => {
-    await native.signInWithApple();
-    onSignedIn?.();
-  });
+  const apple = () => {
+    setAppleUnlinked(null);
+    void run(async () => {
+      try {
+        await native.signInWithApple();
+      } catch (e) {
+        // An Apple ID nobody has linked yet is not an error to apologise for:
+        // it is a thing to do on the web, so it gets its own line and a link.
+        if (isAppleNotLinkedError(e)) { setAppleUnlinked({ message: e.message, url: e.linkUrl }); return; }
+        throw e;
+      }
+      onSignedIn?.();
+    });
+  };
 
-  const toPassword = () => { setPassword(''); setError(null); setStage('password'); };
-  const toCode = () => { setPassword(''); setError(null); setStage('email'); };
+  const toPassword = () => { setPassword(''); setError(null); setAppleUnlinked(null); setStage('password'); };
+  const toCode = () => { setPassword(''); setError(null); setAppleUnlinked(null); setStage('email'); };
 
-  const forgot = () => {
-    const base = (native.authBaseUrl || DEFAULT_AUTH_ORIGIN).replace(/\/+$/, '');
-    const url = resetPasswordUrl ?? `${base}/login`;
+  const openUrl = (url: string) => {
     if (openExternal) { void openExternal(url); return; }
     // Native bootstrap hands this to the in-app browser; on the web it is a tab.
     if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener');
+  };
+
+  const forgot = () => {
+    const base = (native.authBaseUrl || DEFAULT_AUTH_ORIGIN).replace(/\/+$/, '');
+    openUrl(resetPasswordUrl ?? `${base}/login`);
   };
 
   const emailField = (
@@ -290,6 +308,19 @@ export function NativeSignIn({
           <button style={styles.apple} type="button" onClick={apple} disabled={busy}>
              Sign in with Apple
           </button>
+          {appleUnlinked ? (
+            <>
+              <p style={styles.error} role="alert">{appleUnlinked.message}</p>
+              <button
+                style={styles.link}
+                type="button"
+                disabled={busy}
+                onClick={() => openUrl(appleUnlinked.url)}
+              >
+                Link your Apple ID on the web
+              </button>
+            </>
+          ) : null}
         </>
       ) : null}
 
