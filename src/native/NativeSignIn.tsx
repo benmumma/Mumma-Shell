@@ -9,8 +9,19 @@ export interface NativeSignInProps {
   title?: string;
   /** Overrides the line under the heading. */
   helpText?: string;
-  /** Called after the code (or Apple) sign-in succeeds — route away from here. */
+  /** Called after the code (or password, or Apple) sign-in succeeds — route away from here. */
   onSignedIn?: () => void;
+  /**
+   * Where "Forgot password?" goes. Defaults to the client's auth origin +
+   * `/login`, which is where the web keeps the reset button.
+   */
+  resetPasswordUrl?: string;
+  /**
+   * Opens an external URL. Natively the app's bootstrap already routes
+   * `window.open` to the in-app browser (the shell imports no plugin itself),
+   * so the default is enough; pass one to open the sheet directly.
+   */
+  openExternal?: (url: string) => void | Promise<void>;
   /**
    * The device client. Omit inside a `<MummaAuthProvider>` holding a
    * `NativeAuthClient` — it is read from context.
@@ -39,6 +50,8 @@ const styles: Record<string, CSSProperties> = {
     color: 'inherit', boxSizing: 'border-box', width: '100%',
   },
   code: { letterSpacing: '0.4em', textAlign: 'center', fontSize: '1.25rem' },
+  // 16px floor: iOS zooms the page into any focused input below it.
+  password: { fontSize: '16px' },
   primary: {
     font: 'inherit', fontWeight: 600, padding: '0.75rem 1rem', cursor: 'pointer',
     borderRadius: 'var(--mumma-radius, 0.5rem)', border: 'none',
@@ -55,24 +68,41 @@ const styles: Record<string, CSSProperties> = {
     font: 'inherit', padding: 0, border: 'none', background: 'none', cursor: 'pointer',
     color: 'var(--mumma-link, #2563eb)', textDecoration: 'underline', alignSelf: 'flex-start',
   },
+  quiet: {
+    font: 'inherit', fontSize: '0.8125rem', padding: 0, border: 'none', background: 'none',
+    cursor: 'pointer', color: 'var(--mumma-muted-fg, #6b7280)', textDecoration: 'underline',
+    alignSelf: 'flex-start',
+  },
   error: { margin: 0, fontSize: '0.8125rem', color: 'var(--mumma-danger, #b91c1c)' },
   note: { margin: 0, fontSize: '0.75rem', lineHeight: 1.45, color: 'var(--mumma-muted-fg, #6b7280)' },
   divider: { display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--mumma-muted-fg, #6b7280)' },
   rule: { flex: 1, height: 1, background: 'var(--mumma-border, #d1d5db)' },
 };
 
+const DEFAULT_AUTH_ORIGIN = 'https://auth.mumma.co';
+
 /**
- * The shared native sign-in screen: email one-time code, optional Sign in with
- * Apple. No password field, ever — sign-up stays on the web
- * (`_suite/mobile/NATIVE-AUTH-PLAN.md` §1).
+ * The shared native sign-in screen: email one-time code by default, Sign in
+ * with Apple when the app wired up a credential function, and — one quiet link
+ * away — email + password for people who would rather type the password they
+ * already use on the web.
+ *
+ * The CODE stays the default on purpose: it is the screen Apple reviewed, it
+ * works for every account, and it asks nobody to remember anything. The
+ * password path is the secondary door, not the front one. Sign-UP still stays
+ * on the web (`shouldCreateUser: false`), where household invitations and
+ * billing live, so this screen never creates an account.
  */
-export function NativeSignIn({ appName, title, helpText, onSignedIn, client }: NativeSignInProps) {
+export function NativeSignIn({
+  appName, title, helpText, onSignedIn, resetPasswordUrl, openExternal, client,
+}: NativeSignInProps) {
   const contextClient = useOptionalAuth()?.client;
   const native = client ?? (isNativeAuthClient(contextClient) ? contextClient : null);
 
-  const [stage, setStage] = useState<'email' | 'code'>('email');
+  const [stage, setStage] = useState<'email' | 'code' | 'password'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -122,10 +152,52 @@ export function NativeSignIn({ appName, title, helpText, onSignedIn, client }: N
     });
   };
 
+  const signInWithPassword = (e: FormEvent) => {
+    e.preventDefault();
+    const address = email.trim();
+    if (!address) { setError('Enter the email on your Mumma account.'); return; }
+    if (!password) { setError('Enter your password.'); return; }
+    void run(async () => {
+      await native.signInWithPassword({ email: address, password });
+      setPassword('');
+      onSignedIn?.();
+    });
+  };
+
   const apple = () => void run(async () => {
     await native.signInWithApple();
     onSignedIn?.();
   });
+
+  const toPassword = () => { setPassword(''); setError(null); setStage('password'); };
+  const toCode = () => { setPassword(''); setError(null); setStage('email'); };
+
+  const forgot = () => {
+    const base = (native.authBaseUrl || DEFAULT_AUTH_ORIGIN).replace(/\/+$/, '');
+    const url = resetPasswordUrl ?? `${base}/login`;
+    if (openExternal) { void openExternal(url); return; }
+    // Native bootstrap hands this to the in-app browser; on the web it is a tab.
+    if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener');
+  };
+
+  const emailField = (
+    <label style={styles.label}>
+      Email
+      <input
+        style={styles.input}
+        type="email"
+        name="email"
+        inputMode="email"
+        autoComplete="email"
+        autoCapitalize="none"
+        autoCorrect="off"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        disabled={busy}
+      />
+    </label>
+  );
 
   return (
     <div style={styles.wrap}>
@@ -136,27 +208,17 @@ export function NativeSignIn({ appName, title, helpText, onSignedIn, client }: N
 
       {stage === 'email' ? (
         <form style={styles.form} onSubmit={sendCode}>
-          <label style={styles.label}>
-            Email
-            <input
-              style={styles.input}
-              type="email"
-              name="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              autoCorrect="off"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={busy}
-            />
-          </label>
+          {emailField}
           <button style={styles.primary} type="submit" disabled={busy}>
             {busy ? 'Sending…' : 'Send code'}
           </button>
+          <button style={styles.quiet} type="button" disabled={busy} onClick={toPassword}>
+            Use a password instead
+          </button>
         </form>
-      ) : (
+      ) : null}
+
+      {stage === 'code' ? (
         <form style={styles.form} onSubmit={verify}>
           <label style={styles.label}>
             {`6-digit code sent to ${sentTo}`}
@@ -184,8 +246,41 @@ export function NativeSignIn({ appName, title, helpText, onSignedIn, client }: N
           >
             Use a different email
           </button>
+          <button style={styles.quiet} type="button" disabled={busy} onClick={toPassword}>
+            Use a password instead
+          </button>
         </form>
-      )}
+      ) : null}
+
+      {stage === 'password' ? (
+        <form style={styles.form} onSubmit={signInWithPassword}>
+          {emailField}
+          <label style={styles.label}>
+            Password
+            <input
+              style={{ ...styles.input, ...styles.password }}
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              placeholder="Your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+          <button style={styles.primary} type="submit" disabled={busy} aria-busy={busy}>
+            Sign in
+          </button>
+          <button style={styles.link} type="button" disabled={busy} onClick={forgot}>
+            Forgot password?
+          </button>
+          <button style={styles.quiet} type="button" disabled={busy} onClick={toCode}>
+            Use a code instead
+          </button>
+        </form>
+      ) : null}
 
       {error ? <p style={styles.error} role="alert">{error}</p> : null}
 

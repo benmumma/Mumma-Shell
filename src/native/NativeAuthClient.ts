@@ -60,6 +60,25 @@ function friendlyVerifyError(message: string): string {
 }
 
 /**
+ * Password sign-in failures, in the same one-terse-sentence shape as the code
+ * path. The password itself is never echoed, and nothing here says more about
+ * whether the email exists than Supabase already does — a wrong password and
+ * an unknown email both come back as "Invalid login credentials".
+ */
+function friendlyPasswordError(message: string): string {
+  const m = (message || '').toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid credentials') || m.includes('bad_credential')) {
+    return "That email and password don't match.";
+  }
+  if (m.includes('email not confirmed')) return 'Confirm your email first, then sign in.';
+  if (m.includes('too many') || m.includes('rate limit')) return 'Too many tries. Wait a minute, then try again.';
+  if (m.includes('failed to fetch') || m.includes('network') || m.includes('load failed') || m.includes('timeout')) {
+    return "Couldn't reach Mumma. Check your connection and try again.";
+  }
+  return message || 'Something went wrong. Try again.';
+}
+
+/**
  * Native/device counterpart of {@link AuthClient}: a SECOND session family that
  * lives only on this device (C-006 rule 3, `_suite/mobile/NATIVE-AUTH-PLAN.md` §1).
  *
@@ -71,7 +90,10 @@ function friendlyVerifyError(message: string): string {
  *     'omit'`. Never a cookie read or write, never `/api/logout`.
  *  3. Transient failures carry state forward with `stale: true`, exactly as the
  *     web client does. Only a definitive answer signs the device out.
- *  4. No password is ever handled: email one-time code, or Sign in with Apple.
+ *  4. Three ways in, all landing on the same device-local session: email
+ *     one-time code (the default), Sign in with Apple, and email + password.
+ *     Sign-UP stays on the web — `shouldCreateUser: false`, and no password is
+ *     ever persisted or logged here.
  */
 export class NativeAuthClient implements AuthClientLike {
   /** The device's own Supabase client — apps read the access token from here. */
@@ -265,6 +287,24 @@ export class NativeAuthClient implements AuthClientLike {
   async verifyEmailCode(email: string, code: string): Promise<AuthState> {
     const { error } = await this.supabase.auth.verifyOtp({ email, token: code, type: 'email' });
     if (error) throw new Error(friendlyVerifyError(error.message));
+    return this.checkAuthStatus();
+  }
+
+  /**
+   * Email + password, for an account that has one. Lands the session exactly
+   * the way {@link verifyEmailCode} does — same Keychain persistence, same
+   * refresh-token family, same entitlements load — so nothing downstream can
+   * tell the two paths apart.
+   */
+  async signInWithPassword({ email, password }: { email: string; password: string }): Promise<AuthState> {
+    let failure: string | null = null;
+    try {
+      const { error } = await this.supabase.auth.signInWithPassword({ email, password });
+      if (error) failure = error.message;
+    } catch (e) {
+      failure = e instanceof Error ? e.message : '';
+    }
+    if (failure !== null) throw new Error(friendlyPasswordError(failure));
     return this.checkAuthStatus();
   }
 

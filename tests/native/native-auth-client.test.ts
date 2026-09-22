@@ -48,6 +48,7 @@ function makeClient(opts: { session?: typeof LOCAL | null; appleCredential?: () 
       signOut: vi.fn().mockResolvedValue({}),
       signInWithOtp: vi.fn().mockResolvedValue({ error: null }),
       verifyOtp: vi.fn().mockResolvedValue({ error: null }),
+      signInWithPassword: vi.fn().mockResolvedValue({ error: null }),
       signInWithIdToken: vi.fn().mockResolvedValue({ error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
     },
@@ -306,6 +307,50 @@ describe('email one-time code', () => {
     await expect(client.verifyEmailCode('u@x.co', '123456')).rejects.toThrow(/expired/i);
     supabase.auth.verifyOtp.mockResolvedValue({ error: { message: 'Invalid token' } });
     await expect(client.verifyEmailCode('u@x.co', '000000')).rejects.toThrow(/isn't right/);
+  });
+});
+
+describe('email + password', () => {
+  test('lands the session exactly like a verified code: Supabase, then entitlements', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+    const { client, supabase } = makeClient();
+    const state = await client.signInWithPassword({ email: 'u@x.co', password: 'pw' });
+    expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({ email: 'u@x.co', password: 'pw' });
+    expect(state.authenticated).toBe(true);
+    expect(state.appAccess).toEqual({ arcade: true });
+    // The session in state is the DEVICE token — same one the code path lands.
+    expect(state.session?.access_token).toBe('device-at');
+  });
+
+  test('a wrong password is one sentence that never echoes it, and says no more than Supabase does', async () => {
+    const { client, supabase } = makeClient();
+    supabase.auth.signInWithPassword.mockResolvedValue({ error: { message: 'Invalid login credentials' } });
+    await expect(client.signInWithPassword({ email: 'u@x.co', password: 'hunter2' }))
+      .rejects.toThrow("That email and password don't match.");
+    // An unknown email gets the SAME sentence — the app reveals no more than the API.
+    await expect(client.signInWithPassword({ email: 'nobody@x.co', password: 'x' }))
+      .rejects.toThrow("That email and password don't match.");
+  });
+
+  test('a network failure reads as one, whether Supabase returns it or throws', async () => {
+    const { client, supabase } = makeClient();
+    supabase.auth.signInWithPassword.mockResolvedValue({ error: { message: 'Failed to fetch' } });
+    await expect(client.signInWithPassword({ email: 'u@x.co', password: 'pw' }))
+      .rejects.toThrow(/Check your connection/);
+
+    supabase.auth.signInWithPassword.mockRejectedValue(new TypeError('Load failed'));
+    await expect(client.signInWithPassword({ email: 'u@x.co', password: 'pw' }))
+      .rejects.toThrow(/Check your connection/);
+  });
+
+  test('an unconfirmed email and a rate limit each get their own sentence', async () => {
+    const { client, supabase } = makeClient();
+    supabase.auth.signInWithPassword.mockResolvedValue({ error: { message: 'Email not confirmed' } });
+    await expect(client.signInWithPassword({ email: 'u@x.co', password: 'pw' }))
+      .rejects.toThrow(/Confirm your email/);
+    supabase.auth.signInWithPassword.mockResolvedValue({ error: { message: 'Request rate limit reached' } });
+    await expect(client.signInWithPassword({ email: 'u@x.co', password: 'pw' }))
+      .rejects.toThrow(/Too many tries/);
   });
 });
 

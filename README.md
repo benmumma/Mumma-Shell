@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.6.0/mumma-shell-0.6.0.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.7.0/mumma-shell-0.7.0.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -196,8 +196,28 @@ import { NativeSignIn } from '@mumma/shell/native';
 - Same surface as `AuthClient`: `getState`, `subscribe`, `start`, `stop`,
   `checkAuthStatus`, `signIn`, `signOut`, `getAuthHeaders`, `authBaseUrl`.
 - Native-only: `requestEmailCode(email)` (`shouldCreateUser: false` — sign-up
-  stays on the web), `verifyEmailCode(email, code)`, `signInWithApple()`,
+  stays on the web), `verifyEmailCode(email, code)`,
+  `signInWithPassword({ email, password })`, `signInWithApple()`,
   `canUseApple`, and the `isNativeAuthClient(client)` guard.
+
+### Signing in on a device
+
+`NativeSignIn` opens on the **emailed 6-digit code** — the method every account
+has, and the one Apple reviewed — with Sign in with Apple beside it when the app
+injected an `appleCredential`. A quiet "Use a password instead" link swaps the
+code field for a password field for people who would rather type the password
+they already use on the web; "Use a code instead" goes back. `signInWithPassword`
+lands the same device-local session the code path lands, in the same Keychain
+storage. Sign-**up** is still web-only, so this screen never creates an account.
+
+- `appName` / `title` / `helpText` — the app's own words.
+- `onSignedIn` — route away once the session is live.
+- `resetPasswordUrl` — where "Forgot password?" goes; defaults to the client's
+  `authBaseUrl` + `/login`, which is where the web keeps the reset button.
+- `openExternal(url)` — how that link is opened. The default is `window.open`,
+  which each app's native bootstrap already routes into the in-app browser;
+  pass a function to open the sheet directly. The shell itself imports no
+  Capacitor plugin (C-006 rule 2).
 - `signIn()` does **not** navigate: it sets `status: 'signing-in'` so the app
   routes to its own sign-in screen. `signOut()` is `signOut({ scope: 'local' })`
   plus a storage wipe — never `/api/logout`.
