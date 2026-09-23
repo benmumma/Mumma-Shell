@@ -4,6 +4,21 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.8.0 — What's new, in every app
+
+- New entry `@mumma/shell/whatsnew`: the suite's release-notes feed, read from
+  `GET {baseUrl}/api/v1/releases` (entries authored in Mission Control →
+  Release Notes). `fetchReleaseNotes` never throws — any failure is `null`.
+- Seen tracking per app in `localStorage` (`mumma:whatsnew:v1:<app>`);
+  `unreadCount` caps a first visit at the newest 5.
+- `useReleaseNotes` (one fetch per mount, a shared five-minute cache, `loadMore`),
+  the presentational `WhatsNewPanel` (kind chips, "Across Mumma apps", text-only
+  bodies, date groups, empty/error states, Load more) and `WhatsNewButton`
+  (unread dot, accessible dialog, `renderTrigger`), themed by `--mumma-wn-*`.
+- `MummaHeader` takes an optional `whatsNew={{ baseUrl }}`: a button in the
+  actions area plus a "What's new" gear-menu item. Without it the header
+  renders exactly as before.
+
 ## 0.7.1 — Sign in with Apple never mints a stray account
 
 - `signInWithApple()` posts the identity token to

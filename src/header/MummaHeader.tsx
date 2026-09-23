@@ -3,6 +3,19 @@ import { useOptionalAuth } from '../react/AuthProvider';
 import { resolveAuthBaseUrl } from '../auth/urls';
 import type { AppAccessMap } from '../auth/types';
 import { MUMMA_APPS, MUMMA_LABS_ICON, type MummaApp } from './apps';
+import { WhatsNewButton } from '../whatsnew/WhatsNewButton';
+
+/** Opt-in "What's new" for the header — see `MummaHeaderProps.whatsNew`. */
+export interface MummaHeaderWhatsNew {
+  /** Origin that serves `GET /api/v1/releases` (trailing slash fine). */
+  baseUrl: string;
+  /** Feed to show; defaults to the header's `appKey`. */
+  app?: string;
+  /** Button label, menu item and dialog title. Defaults to "What's new". */
+  label?: string;
+  /** Routes relative release-note links inside an SPA. */
+  onNavigate?: (path: string) => void;
+}
 
 export interface MummaHeaderProps {
   appName: string;
@@ -49,6 +62,13 @@ export interface MummaHeaderProps {
   actions?: ReactNode;
   /** Extra entries at the top of the gear menu — use MummaMenuItem for consistent styling */
   menuItems?: ReactNode;
+  /**
+   * Opt in to the shared "What's new" feed: renders a `WhatsNewButton` (with
+   * an unread dot) in the actions area and a "What's new" item in the gear
+   * menu, both opening the same dialog. `app` defaults to `appKey`; with
+   * neither, nothing renders. Absent → the header is exactly as before.
+   */
+  whatsNew?: MummaHeaderWhatsNew;
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -172,7 +192,7 @@ function AppIcon({ src, alt, style }: { src: string; alt: string; style: CSSProp
 export function MummaHeader({
   appName, appKey, logoSrc, homeHref, homeUrl, onHomeNavigate, appAccess: appAccessProp,
   apps = MUMMA_APPS, appSwitcher = true,
-  dekkoUrl, familyUrl, accountUrl, children, actions, menuItems,
+  dekkoUrl, familyUrl, accountUrl, children, actions, menuItems, whatsNew,
 }: MummaHeaderProps) {
   const dekko = dekkoUrl ?? familyUrl;
   // Header works standalone (outside MummaAuthProvider): auth becomes null and
@@ -181,6 +201,9 @@ export function MummaHeader({
   const user = auth?.user ?? null;
   const [gearOpen, setGearOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const whatsNewApp = whatsNew ? (whatsNew.app ?? appKey) : undefined;
+  const whatsNewLabel = whatsNew?.label ?? "What's new";
   const rootRef = useRef<HTMLElement>(null);
   const account = accountUrl ?? `${auth?.client.authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
 
@@ -250,7 +273,21 @@ export function MummaHeader({
       )}
       {children}
       <span style={styles.right}>
-        {actions && <span style={styles.actions}>{actions}</span>}
+        {(actions || (whatsNew && whatsNewApp)) && (
+          <span style={styles.actions}>
+            {actions}
+            {whatsNew && whatsNewApp && (
+              <WhatsNewButton
+                baseUrl={whatsNew.baseUrl}
+                app={whatsNewApp}
+                label={whatsNewLabel}
+                onNavigate={whatsNew.onNavigate}
+                open={whatsNewOpen}
+                onOpenChange={open => { setWhatsNewOpen(open); if (open) { setGearOpen(false); setSwitcherOpen(false); } }}
+              />
+            )}
+          </span>
+        )}
         {dekko && (
           <a href={dekko} style={styles.iconBtn} aria-label="Back to Dekko" title="Dekko">
             <HomeIcon />
@@ -278,6 +315,9 @@ export function MummaHeader({
         <nav style={{ ...styles.menu, right: '0.75rem' }} aria-label="Settings menu">
           {user?.email && <span style={{ ...styles.item, opacity: 0.6, cursor: 'default' }}>{user.email}</span>}
           {menuItems}
+          {whatsNew && whatsNewApp && (
+            <MummaMenuItem onClick={() => { setGearOpen(false); setWhatsNewOpen(true); }}>{whatsNewLabel}</MummaMenuItem>
+          )}
           <MummaMenuItem href={account}>Account</MummaMenuItem>
           <MummaMenuItem onClick={() => auth?.signOut()}>Sign out</MummaMenuItem>
         </nav>

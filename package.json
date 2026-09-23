@@ -1,6 +1,6 @@
 {
   "name": "@mumma/shell",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Mumapps client shell: v4-contract auth core + React bindings for *.mumma.co apps",
   "license": "UNLICENSED",
   "type": "module",
@@ -27,6 +27,11 @@
       "types": "./dist/native/index.d.ts",
       "import": "./dist/native/index.js",
       "require": "./dist/native/index.cjs"
+    },
+    "./whatsnew": {
+      "types": "./dist/whatsnew/index.d.ts",
+      "import": "./dist/whatsnew/index.js",
+      "require": "./dist/whatsnew/index.cjs"
     }
   },
   "scripts": {

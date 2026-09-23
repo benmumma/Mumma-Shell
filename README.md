@@ -1,13 +1,13 @@
 # @mumma/shell
 
-Client-side implementation of the Mumapps Auth v4 contract: a framework-agnostic auth core (`./auth`), a thin React provider/hooks layer (`./react`), an optional shared app header (`./header`), and a device-local client for Capacitor shells (`./native`). Any `*.mumma.co` app should consume this package instead of hand-rolling auth-status polling, token hydration, and cross-app logout sync.
+Client-side implementation of the Mumapps Auth v4 contract: a framework-agnostic auth core (`./auth`), a thin React provider/hooks layer (`./react`), an optional shared app header (`./header`), a release-notes feed (`./whatsnew`), and a device-local client for Capacitor shells (`./native`). Any `*.mumma.co` app should consume this package instead of hand-rolling auth-status polling, token hydration, and cross-app logout sync.
 
 The authoritative contract this package implements is documented in **[`Mumapps-Auth/docs/CONTRACT.md`](../Mumapps-Auth/docs/CONTRACT.md)** — read "The Four Invariants" before integrating or modifying this package.
 
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.7.1/mumma-shell-0.7.1.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.8.0/mumma-shell-0.8.0.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -98,6 +98,7 @@ gated entries are omitted — fail-closed.
   back to the Mumma Labs mark.
 - `apps` — override the switcher's app list (`MummaApp[]`).
 - `appSwitcher={false}` — plain static title, no dropdown.
+- `whatsNew={{ baseUrl }}` — opt in to the shared "What's new" feed (below).
 
 ### Billing
 
@@ -139,6 +140,110 @@ import { ActingMemberProvider, useActingMember } from '@mumma/shell/react';
 const { acting, setActing, decorate } = useActingMember();
 await api.completeTask(decorate({ task_id })); // adds completed_by: acting?.member_id ?? null
 ```
+
+## What's new (`@mumma/shell/whatsnew`)
+
+A standard release-notes feed for every Mumma app: an unread dot in the
+header, a dialog listing what changed, and a per-browser record of what the
+member has already seen. **Entries are authored in Mission Control → Release
+Notes**; this package only reads them.
+
+The server contract: `GET {baseUrl}/api/v1/releases?app=<key>&limit=<1..50>&before=<ISO>&suite=<1|0>`
+— no auth, cached 60s — returns
+`{ success: true, data: { entries: [{ id, app, title, summary, body, kind, link, published_at }], next_before } }`.
+`kind` is `new | improved | fixed | balance`; `app` is a `MUMMA_APPS` key or
+`'suite'` for notes that apply across every app (shown as "Across Mumma
+apps"); `body` is plain text (blank lines separate paragraphs, `- ` lines are
+bullets — never HTML); `link` is a relative in-app path (`/…`) or an https URL.
+`next_before` is the cursor for "Load more".
+
+A What's New feed must never break an app: every failure (network, 4xx such
+as `UNKNOWN_APP`, 503 `MIGRATION_REQUIRED` while the server is not ready, bad
+JSON) resolves to `null` / the panel's "Couldn't load what's new" state.
+
+### Three ways in
+
+**1. One header prop** — the structural path (C-004): the header renders a
+What's new button in its actions area and a "What's new" item in the gear
+menu, both opening the same dialog. `app` defaults to `appKey`; with neither,
+nothing renders. Without the prop the header is exactly as before.
+
+```jsx
+<MummaHeader appName="Arcade" appKey="arcade"
+  whatsNew={{ baseUrl: 'https://admin.mumma.co', onNavigate: path => navigate(path) }} />
+```
+
+`whatsNew`: `{ baseUrl, app?, label? = "What's new", onNavigate? }`.
+
+**2. `WhatsNewButton`** — the same button and dialog anywhere.
+
+```jsx
+import { WhatsNewButton } from '@mumma/shell/whatsnew';
+
+<WhatsNewButton baseUrl="https://admin.mumma.co" app="arcade" onNavigate={navigate} />
+<WhatsNewButton baseUrl={base} app="arcade" variant="text" label="Updates" />
+<WhatsNewButton baseUrl={base} app="arcade"
+  renderTrigger={({ open, unread, label }) => <MyChip onClick={open}>{label} {unread || ''}</MyChip>} />
+```
+
+Props: `baseUrl`, `app`, `label?`, `onNavigate?`, `variant?: 'icon' | 'text'`,
+`limit?`, `includeSuite?`, `renderTrigger?`, `open?` / `onOpenChange?`
+(controlled), `locale?`. The dialog is labelled, traps focus, closes on Esc,
+the close button or the backdrop, locks page scroll and returns focus to the
+trigger. Opening it marks everything as seen. It is a fixed overlay rendered
+in place (no portal, no react-dom dependency), so it must not sit under an
+ancestor with `transform`, `filter` or `backdrop-filter`.
+
+**3. The hook + your own UI**
+
+```jsx
+import { useReleaseNotes, WhatsNewPanel } from '@mumma/shell/whatsnew';
+
+const notes = useReleaseNotes({ baseUrl, app: 'arcade' });
+// { entries, loading, loadingMore, error, hasMore, loadMore, refresh, unread, markAllSeen, lastSeen }
+<WhatsNewPanel entries={notes.entries} loading={notes.loading} error={notes.error}
+  hasMore={notes.hasMore} onLoadMore={notes.loadMore} onNavigate={navigate} />
+```
+
+The hook fetches once per mount and shares a module-level cache per
+`baseUrl|app` for five minutes, so a header button and a page panel never
+double-fetch; `clearReleaseNotesCache()` drops it. Links: a relative path goes
+through `onNavigate(path)` when given (SPA routing; the dialog closes first),
+otherwise it is a plain link and the browser navigates; https links open in a
+new tab; anything else is not rendered.
+
+Lower level, all pure and exported: `fetchReleaseNotes({ baseUrl, app, limit?,
+before?, includeSuite?, fetchImpl? })` → `{ entries, nextBefore } | null`
+(never throws; trailing slash on `baseUrl` is fine), `readLastSeen(app)`,
+`markSeen(app, iso)`, `unreadCount(entries, lastSeen)` and
+`parseReleaseBody(body)`.
+
+**Seen tracking** lives in `localStorage` under `mumma:whatsnew:v1:<app>`
+(the newest `published_at` seen; it never moves backwards), wrapped so a
+missing or throwing storage only means the dot clears for this page load.
+**On a first visit** — nothing seen yet — at most the newest **5** count as
+unread (`FIRST_VISIT_UNREAD_CAP`): a new member sees a small number, not every
+change ever shipped. The dialog still lists everything.
+
+### Theming
+
+No stylesheet ships. Every color is a CSS custom property whose fallback
+follows the OS light/dark preference, so an app can skin it to its own theme
+(set them on `:root` or any ancestor of the header):
+
+| Property | Used for | Fallback (light / dark) |
+| --- | --- | --- |
+| `--mumma-wn-bg` | dialog background | `#ffffff` / `#111827` |
+| `--mumma-wn-fg` | dialog text | `#111827` / `#f9fafb` |
+| `--mumma-wn-muted` | dates, body text, "Across Mumma apps" | `#6b7280` / `#9ca3af` |
+| `--mumma-wn-accent` | links, the NEW chip, the unread dot | `#2563eb` / `#60a5fa` (dot: `#ef4444`) |
+| `--mumma-wn-border` | dividers, dialog border, Load more | `#e5e7eb` / `#374151` |
+| `--mumma-wn-font` | dialog font | `var(--mumma-font, system-ui, sans-serif)` |
+| `--mumma-wn-radius` | dialog and button corners | `0.75rem` |
+
+Optional finer hooks: `--mumma-wn-dot` (the unread dot and count only) and
+`--mumma-wn-kind-new|improved|fixed|balance` (chip colors). The trigger
+button inherits `color` from where it sits, like the header's other icons.
 
 ## Native apps (`@mumma/shell/native`)
 
@@ -258,4 +363,6 @@ the app's bundle id in its authorized client ids.
 - `./native` — `NativeAuthClient` (device-local Supabase session, bearer-only
   auth-status, email one-time code, Sign in with Apple) and the shared
   `NativeSignIn` screen, for Capacitor shells. Zero `@capacitor/*` dependencies.
+- `./whatsnew` — `fetchReleaseNotes`, the seen/unread helpers, `useReleaseNotes`,
+  `WhatsNewPanel` and `WhatsNewButton`: the suite's release-notes feed.
 - `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.
