@@ -170,7 +170,7 @@ nothing renders. Without the prop the header is exactly as before.
 
 ```jsx
 <MummaHeader appName="Arcade" appKey="arcade"
-  whatsNew={{ baseUrl: 'https://admin.mumma.co', onNavigate: path => navigate(path) }} />
+  whatsNew={{ baseUrl: 'https://api.mumma.co', onNavigate: path => navigate(path) }} />
 ```
 
 `whatsNew`: `{ baseUrl, app?, label? = "What's new", onNavigate? }`.
@@ -180,7 +180,7 @@ nothing renders. Without the prop the header is exactly as before.
 ```jsx
 import { WhatsNewButton } from '@mumma/shell/whatsnew';
 
-<WhatsNewButton baseUrl="https://admin.mumma.co" app="arcade" onNavigate={navigate} />
+<WhatsNewButton baseUrl="https://api.mumma.co" app="arcade" onNavigate={navigate} />
 <WhatsNewButton baseUrl={base} app="arcade" variant="text" label="Updates" />
 <WhatsNewButton baseUrl={base} app="arcade"
   renderTrigger={({ open, unread, label }) => <MyChip onClick={open}>{label} {unread || ''}</MyChip>} />
