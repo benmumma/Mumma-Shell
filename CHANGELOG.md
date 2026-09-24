@@ -4,6 +4,26 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.8.1 — the web client never refreshes the shared session itself
+
+- `AuthClient` no longer calls `supabase.auth.getSession()`. In
+  @supabase/auth-js 2.x, `getSession()` refreshes the stored token whenever it
+  is within 90s of expiry, even with `autoRefreshToken: false`. The expiry
+  re-check ran 60s before expiry, inside that margin, so every web app could
+  refresh the suite's shared rotating token locally — the second refresher the
+  v4 contract forbids (Invariant 1). The auth-status bearer now comes from the
+  last auth-status answer, or from the standalone bridge hand-off until the
+  first answer lands.
+- The expiry re-check moves to 105s before expiry (`RECHECK_LEAD_SECONDS`):
+  inside the auth service's 120s proactive-refresh window and clear of
+  auth-js's 90s margin.
+- While auth-status is unreachable (`stale`), re-checks back off 5s → 5 min
+  instead of firing every 5s, and repeated failures no longer notify
+  subscribers again (no re-render of every consumer per retry). Recovery resets
+  the backoff. Pure `recheckDelayMs()` is exported for tests.
+- `NativeAuthClient` is unchanged: a device session is its own refresh-token
+  family and refreshes locally by design (Invariant 5).
+
 ## 0.8.0 — What's new, in every app
 
 - New entry `@mumma/shell/whatsnew`: the suite's release-notes feed, read from

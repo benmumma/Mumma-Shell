@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.8.0/mumma-shell-0.8.0.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.8.1/mumma-shell-0.8.1.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
