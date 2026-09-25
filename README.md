@@ -340,7 +340,9 @@ in as before, so a flaky auth site never locks anyone out.
   `GET /api/auth-status` with `Authorization: Bearer` and `credentials: 'omit'`
   — entitlements still come from `auth.mumma.co` (C-003), no cookie is read or
   written. Transient failure carries state forward with `stale: true`; an
-  expired bearer is retried once after a local refresh, then signs out. There is
+  expired bearer is retried once after a local refresh, then signs out. A
+  local refresh that fails because Supabase is unreachable
+  (`isTransientRefreshError`) is transient too, and keeps state. There is
   no wake watcher: call `checkAuthStatus()` from the app's `appStateChange`.
 - `NativeSignIn` props: `appName`, `title`, `helpText`, `onSignedIn`, `client`
   (omit inside a provider). Email code first, Apple button only when

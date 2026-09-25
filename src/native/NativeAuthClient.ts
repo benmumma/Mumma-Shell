@@ -106,6 +106,37 @@ export function isAppleNotLinkedError(e: unknown): e is AppleNotLinkedError {
 }
 
 /**
+ * True when a refresh failure says nothing about the token: Supabase could not
+ * be reached, or could not answer. The same line Mumapps-Auth draws for a
+ * bearer it cannot validate (`isTransientValidationError`,
+ * pages/api/auth-status.js), so the service and the device agree on what an
+ * outage looks like.
+ *
+ * How @supabase/auth-js 2.x reports a failed refresh — as the `error` of
+ * `refreshSession()`, and of `getSession()` when the stored token had to be
+ * refreshed first:
+ *  - `AuthRetryableFetchError`: the fetch threw (status 0) or Supabase
+ *    answered 500–504 / 520–530. auth-js KEEPS the stored session. Transient.
+ *  - `AuthUnknownError`: the error body was not JSON (a gateway's HTML page).
+ *    Transient.
+ *  - `AuthApiError` carrying Supabase's status: 408, 429 or another 5xx is
+ *    transient; a 4xx such as `refresh_token_not_found` or
+ *    `refresh_token_already_used` is a verdict. Signs out.
+ *  - `AuthSessionMissingError` (400) and `AuthRefreshDiscardedError` (409, a
+ *    concurrent sign-out won the race): verdicts. Signs out.
+ *
+ * Name-based rather than `instanceof` so it survives a bundle boundary (the
+ * app's supabase-js copy is not necessarily the shell's).
+ */
+export function isTransientRefreshError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { name, status } = error as { name?: unknown; status?: unknown };
+  if (name === 'AuthRetryableFetchError' || name === 'AuthUnknownError') return true;
+  if (typeof status !== 'number') return false;
+  return status === 0 || status >= 500 || status === 408 || status === 429;
+}
+
+/**
  * Native/device counterpart of {@link AuthClient}: a SECOND session family that
  * lives only on this device (C-006 rule 3, `_suite/mobile/NATIVE-AUTH-PLAN.md` §1).
  *
@@ -116,7 +147,10 @@ export function isAppleNotLinkedError(e: unknown): e is AppleNotLinkedError {
  *  2. Entitlements still come from auth.mumma.co — bearer only, `credentials:
  *     'omit'`. Never a cookie read or write, never `/api/logout`.
  *  3. Transient failures carry state forward with `stale: true`, exactly as the
- *     web client does. Only a definitive answer signs the device out.
+ *     web client does. Only a definitive answer signs the device out. That
+ *     includes the device's own refresh: an expired token that cannot be
+ *     refreshed because Supabase is down is an outage, not a sign-out
+ *     ({@link isTransientRefreshError}).
  *  4. Three ways in, all landing on the same device-local session: email
  *     one-time code (the default), Sign in with Apple, and email + password.
  *     Sign-UP stays on the web — `shouldCreateUser: false`, and no password is
@@ -137,6 +171,14 @@ export class NativeAuthClient implements AuthClientLike {
   /** Keys the wrapped storage has seen, so signOut can wipe them all. */
   private touchedKeys = new Set<string>();
   private unsubscribeAuth: (() => void) | null = null;
+  /**
+   * Bumped on every auth-js SIGNED_OUT. A refresh can fail with a status
+   * {@link isTransientRefreshError} counts as an outage (408, 429, a non-JSON
+   * body) that auth-js still treats as final — it deletes the stored session
+   * and emits SIGNED_OUT before returning. Comparing the counter across the
+   * call lets that sign-out win instead of being carried forward.
+   */
+  private signedOutEpoch = 0;
 
   constructor(config: NativeAuthClientConfig) {
     this.storage = config.storage;
@@ -184,17 +226,47 @@ export class NativeAuthClient implements AuthClientLike {
     return cleared;
   }
 
-  private async localSession(): Promise<AuthSession | null> {
+  /**
+   * The device session, plus whether its absence is an outage. auth-js's
+   * `getSession()` refreshes an expired stored token before answering; when
+   * that refresh fails it answers `session: null` WITH the refresh error — and
+   * on a retryable error it keeps the stored session for the next try. With no
+   * stored session at all it answers `session: null, error: null`.
+   *
+   * A throw is not a network verdict (auth-js returns those as `error`); it is
+   * the storage adapter or the client itself failing, and stays "no session"
+   * as before — a Keychain adapter that rejects on a missing key must still
+   * land a fresh install on sign-in.
+   */
+  private async readDeviceSession(): Promise<{ session: AuthSession | null; transient: boolean }> {
     try {
-      const { data } = await this.supabase.auth.getSession();
+      const { data, error } = await this.supabase.auth.getSession();
       const s = data?.session;
-      if (!s?.access_token) return null;
+      if (!s?.access_token) return { session: null, transient: isTransientRefreshError(error) };
       return {
-        access_token: s.access_token,
-        refresh_token: s.refresh_token ?? null,
-        expires_at: s.expires_at ?? null,
+        session: {
+          access_token: s.access_token,
+          refresh_token: s.refresh_token ?? null,
+          expires_at: s.expires_at ?? null,
+        },
+        transient: false,
       };
-    } catch { return null; }
+    } catch { return { session: null, transient: false }; }
+  }
+
+  /** Apps read this duck-typed (Arcade's offline identity), so its shape stays `AuthSession | null`. */
+  private async localSession(): Promise<AuthSession | null> {
+    return (await this.readDeviceSession()).session;
+  }
+
+  /**
+   * A failed refresh: an outage keeps state (`stale: true`), unless auth-js
+   * signed the device out during the call ({@link signedOutEpoch}); anything
+   * else is a verdict and signs out.
+   */
+  private afterFailedRefresh(transient: boolean, epochBefore: number): AuthState {
+    if (transient && this.signedOutEpoch === epochBefore) return this.carryForward();
+    return this.clear();
   }
 
   /** Single-flight: concurrent callers share one request. */
@@ -205,8 +277,14 @@ export class NativeAuthClient implements AuthClientLike {
   }
 
   private async doCheck(refreshed = false): Promise<AuthState> {
-    const session = await this.localSession();
-    if (!session?.access_token) return this.clear();   // no device session: definitively out
+    const epoch = this.signedOutEpoch;
+    const { session, transient } = await this.readDeviceSession();
+    if (!session?.access_token) {
+      // The stored token expired and Supabase could not refresh it (cold start,
+      // or a resume after an hour): an outage, not a sign-out.
+      if (transient) return this.afterFailedRefresh(true, epoch);
+      return this.clear();                              // no device session: definitively out
+    }
 
     let data: AuthStatusResponse;
     try {
@@ -242,13 +320,18 @@ export class NativeAuthClient implements AuthClientLike {
   /**
    * The bearer was refused (`authenticated: false`, typically
    * `warning: 'bearer_expired'`). Try ONE local refresh, then treat a second
-   * refusal as signed out.
+   * refusal as signed out. A refresh that fails because Supabase is down
+   * keeps state (`stale: true`); a refresh Supabase refuses signs out. A throw
+   * is not Supabase's answer (auth-js returns those as `error`) and signs out
+   * as before.
    */
   private async afterRejectedBearer(alreadyRefreshed: boolean): Promise<AuthState> {
     if (alreadyRefreshed) return this.clear();
+    const epoch = this.signedOutEpoch;
     try {
       const { data, error } = await this.supabase.auth.refreshSession();
-      if (error || !data?.session?.access_token) return this.clear();
+      if (error) return this.afterFailedRefresh(isTransientRefreshError(error), epoch);
+      if (!data?.session?.access_token) return this.clear();
     } catch { return this.clear(); }
     return this.doCheck(true);
   }
@@ -258,7 +341,7 @@ export class NativeAuthClient implements AuthClientLike {
     if (!this.unsubscribeAuth) {
       try {
         const { data } = this.supabase.auth.onAuthStateChange((event) => {
-          if (event === 'SIGNED_OUT') { this.clear(); return; }
+          if (event === 'SIGNED_OUT') { this.signedOutEpoch += 1; this.clear(); return; }
           if (event === 'TOKEN_REFRESHED') void this.syncSessionOnly();
         });
         this.unsubscribeAuth = () => { try { data?.subscription?.unsubscribe(); } catch {} };
