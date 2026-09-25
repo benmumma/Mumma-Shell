@@ -173,6 +173,33 @@ describe('checkAuthStatus', () => {
     expect(state.stale).toBe(true);
   });
 
+  test("Mumapps-Auth's bearer-only outage answer carries state forward: no refresh, no sign-out", async () => {
+    // Exactly what auth-status sends a bearer-only caller when Supabase cannot
+    // validate the token (network/5xx) — distinct from `bearer_expired`.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+    const { client, supabase, storage } = makeClient();
+    await client.checkAuthStatus();
+    storage.setItem('sb-proj-auth-token', 'x');
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ authenticated: false, warning: 'retryable', retryable: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const state = await client.checkAuthStatus();
+
+    expect(state.status).toBe('ready');
+    expect(state.authenticated).toBe(true);
+    expect(state.stale).toBe(true);
+    expect(state.user?.id).toBe('u1');
+    expect(state.appAccess.arcade).toBe(true);
+    expect(state.session?.access_token).toBe('device-at');
+    expect(fetchMock).toHaveBeenCalledTimes(1);                  // no second, post-refresh check
+    expect(supabase.auth.refreshSession).not.toHaveBeenCalled(); // not treated as a rejected bearer
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();            // device session kept
+  });
+
   test('bearer_expired: refreshes locally once, then succeeds', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(expired())
