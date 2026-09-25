@@ -4,6 +4,49 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## Unreleased (proposed 0.8.2) — a Supabase outage no longer signs a device out
+
+- `NativeAuthClient`: when the device's access token has expired and Supabase
+  is down, the local refresh fails with a retryable error, and the client
+  used to clear state, so the member saw the sign-in screen until the next
+  check. The client now keeps state with `stale: true`,
+  both when `getSession()`'s own refresh of the expired stored token fails (a
+  cold start, or a resume after an hour) and when the explicit refresh after a
+  refused bearer fails. On a cold start that is the usual carry-forward
+  (`authenticated: false, stale: true`), not a plain sign-out. auth-js already
+  keeps the stored session after a retryable error, so the next check
+  recovers.
+- What counts as an outage matches Mumapps-Auth's `isTransientValidationError`:
+  `AuthRetryableFetchError`, `AuthUnknownError`, or a status of 0, 408, 429 or
+  ≥ 500. It is exported as `isTransientRefreshError`. A definitive refusal
+  (`refresh_token_not_found`, `invalid_grant`, any other 4xx, a missing or
+  discarded session) still signs out, and so does a refresh during which
+  auth-js itself emitted `SIGNED_OUT` (it does that for a 408/429 on an
+  expired token).
+- A throw from `getSession()`/`refreshSession()` means the storage adapter or
+  the client failed, not that Supabase refused the token (auth-js returns
+  Supabase's answers as `error`). It still counts as no session, as before.
+
+## 0.8.1 — the web client never refreshes the shared session itself
+
+- `AuthClient` no longer calls `supabase.auth.getSession()`. In
+  @supabase/auth-js 2.x, `getSession()` refreshes the stored token whenever it
+  is within 90s of expiry, even with `autoRefreshToken: false`. The expiry
+  re-check ran 60s before expiry, inside that margin, so every web app could
+  refresh the suite's shared rotating token locally — the second refresher the
+  v4 contract forbids (Invariant 1). The auth-status bearer now comes from the
+  last auth-status answer, or from the standalone bridge hand-off until the
+  first answer lands.
+- The expiry re-check moves to 105s before expiry (`RECHECK_LEAD_SECONDS`):
+  inside the auth service's 120s proactive-refresh window and clear of
+  auth-js's 90s margin.
+- While auth-status is unreachable (`stale`), re-checks back off 5s → 5 min
+  instead of firing every 5s, and repeated failures no longer notify
+  subscribers again (no re-render of every consumer per retry). Recovery resets
+  the backoff. Pure `recheckDelayMs()` is exported for tests.
+- `NativeAuthClient` is unchanged: a device session is its own refresh-token
+  family and refreshes locally by design (Invariant 5).
+
 ## 0.8.0 — What's new, in every app
 
 - New entry `@mumma/shell/whatsnew`: the suite's release-notes feed, read from
