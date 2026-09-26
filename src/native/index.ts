@@ -3,6 +3,7 @@ export {
   isNativeAuthClient,
   AppleNotLinkedError,
   isAppleNotLinkedError,
+  isTransientRefreshError,
   DEFAULT_NATIVE_AUTH_BASE_URL,
   type NativeAuthClientConfig,
   type NativeSecureStorage,

@@ -3,8 +3,14 @@ import { describe, test, expect, vi, beforeEach } from 'vitest';
 const createClient = vi.fn();
 vi.mock('@supabase/supabase-js', () => ({ createClient: (...args: unknown[]) => createClient(...args) }));
 
+// The REAL auth-js error classes, so each case is exactly what refreshSession()
+// / getSession() hand back (only supabase-js's createClient is mocked above).
 import {
-  NativeAuthClient, isNativeAuthClient, isAppleNotLinkedError,
+  AuthApiError, AuthRefreshDiscardedError, AuthRetryableFetchError, AuthSessionMissingError, AuthUnknownError,
+} from '@supabase/auth-js';
+
+import {
+  NativeAuthClient, isNativeAuthClient, isAppleNotLinkedError, isTransientRefreshError,
 } from '../../src/native/NativeAuthClient';
 
 /**
@@ -173,6 +179,33 @@ describe('checkAuthStatus', () => {
     expect(state.stale).toBe(true);
   });
 
+  test("Mumapps-Auth's bearer-only outage answer carries state forward: no refresh, no sign-out", async () => {
+    // Exactly what auth-status sends a bearer-only caller when Supabase cannot
+    // validate the token (network/5xx) — distinct from `bearer_expired`.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+    const { client, supabase, storage } = makeClient();
+    await client.checkAuthStatus();
+    storage.setItem('sb-proj-auth-token', 'x');
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ authenticated: false, warning: 'retryable', retryable: true }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const state = await client.checkAuthStatus();
+
+    expect(state.status).toBe('ready');
+    expect(state.authenticated).toBe(true);
+    expect(state.stale).toBe(true);
+    expect(state.user?.id).toBe('u1');
+    expect(state.appAccess.arcade).toBe(true);
+    expect(state.session?.access_token).toBe('device-at');
+    expect(fetchMock).toHaveBeenCalledTimes(1);                  // no second, post-refresh check
+    expect(supabase.auth.refreshSession).not.toHaveBeenCalled(); // not treated as a rejected bearer
+    expect(supabase.auth.signOut).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();            // device session kept
+  });
+
   test('bearer_expired: refreshes locally once, then succeeds', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(expired())
@@ -221,6 +254,239 @@ describe('checkAuthStatus', () => {
     await client.checkAuthStatus();
     off();
     expect(seen).toContain(true);
+  });
+});
+
+/** What auth-js 2.x returns from refreshSession()/getSession() for each refresh failure. */
+const offline = () => new AuthRetryableFetchError('Failed to fetch', 0);           // fetch threw
+const gateway = () => new AuthRetryableFetchError('Service Unavailable', 503);     // 500–504, 520–530
+const notFound = () => new AuthApiError('Invalid Refresh Token: Refresh Token Not Found', 400, 'refresh_token_not_found');
+const invalidGrant = () => new AuthApiError('invalid_grant', 400, 'invalid_grant');
+const rateLimited = () => new AuthApiError('Request rate limit reached', 429, 'over_request_rate_limit');
+
+const refreshFails = (error: unknown) => ({ data: { user: null, session: null }, error });
+/** getSession() when the stored token had expired and its refresh failed. */
+const loadFails = (error: unknown) => ({ data: { session: null }, error });
+
+describe('isTransientRefreshError (mirrors Mumapps-Auth isTransientValidationError)', () => {
+  test.each([
+    ['AuthRetryableFetchError, fetch threw (0)', offline()],
+    ['AuthRetryableFetchError, 503', gateway()],
+    ['AuthRetryableFetchError, 522', new AuthRetryableFetchError('cf', 522)],
+    ['AuthUnknownError (non-JSON error body)', new AuthUnknownError('Unexpected token <', new SyntaxError('x'))],
+    ['AuthApiError 500', new AuthApiError('boom', 500, 'unexpected_failure')],
+    ['AuthApiError 505 (not in auth-js retry list)', new AuthApiError('http', 505, undefined)],
+    ['AuthApiError 408', new AuthApiError('timeout', 408, 'request_timeout')],
+    ['AuthApiError 429', rateLimited()],
+    ['duck-typed across a bundle boundary', { name: 'AuthRetryableFetchError', status: 0 }],
+  ])('transient: %s', (_label, error) => {
+    expect(isTransientRefreshError(error)).toBe(true);
+  });
+
+  test.each([
+    ['refresh_token_not_found (400)', notFound()],
+    ['invalid_grant (400)', invalidGrant()],
+    ['refresh_token_already_used (400)', new AuthApiError('Already Used', 400, 'refresh_token_already_used')],
+    ['AuthApiError 401', new AuthApiError('bad jwt', 401, 'bad_jwt')],
+    ['AuthApiError 403', new AuthApiError('forbidden', 403, undefined)],
+    ['AuthSessionMissingError', new AuthSessionMissingError()],
+    ['AuthRefreshDiscardedError (409, a concurrent sign-out)', new AuthRefreshDiscardedError()],
+    ['a plain Error', new Error('bad')],
+    ['an error-shaped object with no status', { message: 'bad' }],
+    ['null', null],
+    ['undefined', undefined],
+    ['a string', 'Failed to fetch'],
+  ])('definitive: %s', (_label, error) => {
+    expect(isTransientRefreshError(error)).toBe(false);
+  });
+});
+
+describe('expired device token while Supabase is down', () => {
+  /** A signed-in client whose next auth-status call refuses the bearer. */
+  async function signedInThenRefused(refused: () => unknown = expired) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+    const made = makeClient();
+    await made.client.start();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(async () => refused())
+      .mockResolvedValue(bearerOk());
+    vi.stubGlobal('fetch', fetchMock);
+    return { ...made, fetchMock };
+  }
+
+  function expectKeptStale(state: ReturnType<NativeAuthClient['getState']>) {
+    expect(state.status).toBe('ready');
+    expect(state.authenticated).toBe(true);
+    expect(state.stale).toBe(true);
+    expect(state.user?.id).toBe('u1');
+    expect(state.appAccess.arcade).toBe(true);
+    expect(state.household?.default_household_id).toBe('h1');
+    expect(state.session?.access_token).toBe('device-at');
+  }
+
+  function expectSignedOut(state: ReturnType<NativeAuthClient['getState']>) {
+    expect(state.status).toBe('ready');
+    expect(state.authenticated).toBe(false);
+    expect(state.stale).toBe(false);
+    expect(state.user).toBeNull();
+    expect(state.session).toBeNull();
+  }
+
+  describe('resume: auth-status refuses the bearer, the local refresh fails', () => {
+    test.each([
+      ['offline (AuthRetryableFetchError 0)', offline],
+      ['Supabase 503 (AuthRetryableFetchError 503)', gateway],
+    ])('%s keeps state as stale, no second auth-status call, nothing wiped', async (_l, err) => {
+      const { client, supabase, storage, fetchMock } = await signedInThenRefused();
+      supabase.auth.refreshSession.mockResolvedValue(refreshFails(err()));
+      const seen: boolean[] = [];
+      client.subscribe((s) => seen.push(s.authenticated));
+
+      const state = await client.checkAuthStatus();
+
+      expectKeptStale(state);
+      expect(supabase.auth.refreshSession).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);                 // no post-refresh re-check
+      expect(supabase.auth.signOut).not.toHaveBeenCalled();
+      expect(storage.removeItem).not.toHaveBeenCalled();
+      expect(seen).not.toContain(false);                          // the sign-in screen never flashes
+    });
+
+    test('a 401 from auth-status takes the same path', async () => {
+      const { client, supabase } = await signedInThenRefused(() => ({ ok: false, status: 401, json: async () => ({}) }));
+      supabase.auth.refreshSession.mockResolvedValue(refreshFails(gateway()));
+      expectKeptStale(await client.checkAuthStatus());
+    });
+
+    test('408 / 429 / a non-JSON error body keep state too (Mumapps-Auth parity)', async () => {
+      for (const err of [
+        new AuthApiError('timeout', 408, 'request_timeout'),
+        rateLimited(),
+        new AuthUnknownError('Unexpected token <', new SyntaxError('x')),
+      ]) {
+        const { client, supabase } = await signedInThenRefused();
+        supabase.auth.refreshSession.mockResolvedValue(refreshFails(err));
+        expectKeptStale(await client.checkAuthStatus());
+      }
+    });
+
+    test.each([
+      ['refresh_token_not_found', notFound],
+      ['invalid_grant', invalidGrant],
+      ['a concurrent sign-out discarded the refresh', () => new AuthRefreshDiscardedError()],
+      ['no session to refresh', () => new AuthSessionMissingError()],
+    ])('a definitive rejection (%s) still signs out', async (_l, err) => {
+      const { client, supabase, fetchMock } = await signedInThenRefused();
+      supabase.auth.refreshSession.mockResolvedValue(refreshFails(err()));
+      expectSignedOut(await client.checkAuthStatus());
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    test('a transient-looking status that auth-js itself signed out on (SIGNED_OUT during the refresh) signs out', async () => {
+      // auth-js 2.x retries only AuthRetryableFetchError; on a 429 with an
+      // expired access token it deletes the stored session and emits
+      // SIGNED_OUT before refreshSession() returns. That sign-out must win.
+      const { client, supabase } = await signedInThenRefused();
+      const handler = supabase.auth.onAuthStateChange.mock.calls[0][0] as (e: string) => void;
+      supabase.auth.refreshSession.mockImplementation(async () => {
+        handler('SIGNED_OUT');
+        return refreshFails(rateLimited());
+      });
+      expectSignedOut(await client.checkAuthStatus());
+    });
+
+    test('a throw from refreshSession is not a network verdict and signs out as before', async () => {
+      const { client, supabase } = await signedInThenRefused();
+      supabase.auth.refreshSession.mockRejectedValue(new TypeError('storage adapter broke'));
+      expectSignedOut(await client.checkAuthStatus());
+    });
+
+    test('recovers on the next check once Supabase is back', async () => {
+      const { client, supabase } = await signedInThenRefused();
+      supabase.auth.refreshSession.mockResolvedValueOnce(refreshFails(gateway()));
+      expectKeptStale(await client.checkAuthStatus());
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+      const state = await client.checkAuthStatus();
+      expect(state.authenticated).toBe(true);
+      expect(state.stale).toBe(false);
+    });
+  });
+
+  describe("cold start / resume: getSession()'s own refresh of the expired token fails", () => {
+    test('cold start, Supabase down: stale and unauthenticated (the carry-forward), never a plain sign-out', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const { client, supabase, storage } = makeClient();
+      supabase.auth.getSession.mockResolvedValue(loadFails(offline()));
+
+      const state = await client.start();
+
+      // Nothing in memory to carry: exactly what a network failure on a cold
+      // start already answered, which apps render as "can't reach Mumma" and
+      // not as the sign-in screen.
+      expect(state.status).toBe('ready');
+      expect(state.authenticated).toBe(false);
+      expect(state.stale).toBe(true);
+      expect(fetchMock).not.toHaveBeenCalled();                   // no point sending an expired bearer
+      expect(supabase.auth.refreshSession).not.toHaveBeenCalled();
+      expect(supabase.auth.signOut).not.toHaveBeenCalled();
+      expect(storage.removeItem).not.toHaveBeenCalled();
+    });
+
+    test('resume after an hour, Supabase 503: the signed-in state is kept as stale', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+      const { client, supabase } = makeClient();
+      await client.start();
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      supabase.auth.getSession.mockResolvedValue(loadFails(gateway()));
+
+      expectKeptStale(await client.checkAuthStatus());
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test('then recovers once the stored session refreshes', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+      const { client, supabase } = makeClient();
+      supabase.auth.getSession.mockResolvedValueOnce(loadFails(offline()));
+      expect((await client.start()).stale).toBe(true);
+
+      const state = await client.checkAuthStatus();                // getSession back to LOCAL
+      expect(state.authenticated).toBe(true);
+      expect(state.stale).toBe(false);
+    });
+
+    test.each([
+      ['refresh_token_not_found', notFound],
+      ['invalid_grant', invalidGrant],
+    ])('a definitive rejection (%s) still signs out', async (_l, err) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+      const { client, supabase } = makeClient();
+      await client.start();
+      supabase.auth.getSession.mockResolvedValue(loadFails(err()));
+      expectSignedOut(await client.checkAuthStatus());
+    });
+
+    test('auth-js signing out during the load (429 with an expired token) wins', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(bearerOk()));
+      const { client, supabase } = makeClient();
+      await client.start();
+      const handler = supabase.auth.onAuthStateChange.mock.calls[0][0] as (e: string) => void;
+      supabase.auth.getSession.mockImplementation(async () => {
+        handler('SIGNED_OUT');
+        return loadFails(rateLimited());
+      });
+      expectSignedOut(await client.checkAuthStatus());
+    });
+
+    test('a throwing getSession (e.g. a storage adapter) stays "no session", as before', async () => {
+      const { client, supabase } = makeClient();
+      supabase.auth.getSession.mockRejectedValue(new Error('item not found'));
+      const state = await client.start();
+      expect(state.authenticated).toBe(false);
+      expect(state.stale).toBe(false);
+    });
   });
 });
 

@@ -118,6 +118,12 @@ export interface SupabaseAuthLike {
   auth: {
     setSession(s: { access_token: string; refresh_token: string }): Promise<unknown>;
     signOut(opts?: unknown): Promise<unknown>;
+    /**
+     * NativeAuthClient only (a device session, refreshed locally by design).
+     * The web AuthClient must never call it: @supabase/auth-js refreshes
+     * inside getSession() within 90s of expiry, which would make the web a
+     * second refresher of the suite's shared token (CONTRACT.md Invariant 1).
+     */
     getSession(): Promise<{ data: { session: { access_token?: string } | null } }>;
   };
 }

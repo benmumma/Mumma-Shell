@@ -23,14 +23,16 @@ beforeEach(() => { vi.useFakeTimers(); document.cookie = 'mumapps_sid=; expires=
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('lifecycle', () => {
-  test('schedules a re-check at expires_at - 60s', async () => {
+  test('schedules a re-check at expires_at - 105s', async () => {
     const exp = Math.floor(Date.now() / 1000) + 300; // 5 min out
     const fetchMock = vi.fn().mockResolvedValue(status(exp));
     vi.stubGlobal('fetch', fetchMock);
     const client = new AuthClient({ supabase: supabase() as any, authBaseUrl: 'https://auth.test' });
     await client.checkAuthStatus();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(241_000); // past exp-60
+    await vi.advanceTimersByTimeAsync(190_000); // not yet: exp-105 is 195s out
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(6_000); // past exp-105
     expect(fetchMock).toHaveBeenCalledTimes(2);
     client.stop();
   });

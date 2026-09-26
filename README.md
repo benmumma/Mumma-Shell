@@ -7,7 +7,7 @@ The authoritative contract this package implements is documented in **[`Mumapps-
 ## Install
 
 ```bash
-npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.8.0/mumma-shell-0.8.0.tgz
+npm i https://github.com/benmumma/Mumma-Shell/releases/download/v0.8.1/mumma-shell-0.8.1.tgz
 # Always install from the GitHub Release tarball (ships prebuilt dist/);
 # git deps break under npm ignore-scripts/min-release-age hardening.
 ```
@@ -170,7 +170,7 @@ nothing renders. Without the prop the header is exactly as before.
 
 ```jsx
 <MummaHeader appName="Arcade" appKey="arcade"
-  whatsNew={{ baseUrl: 'https://admin.mumma.co', onNavigate: path => navigate(path) }} />
+  whatsNew={{ baseUrl: 'https://api.mumma.co', onNavigate: path => navigate(path) }} />
 ```
 
 `whatsNew`: `{ baseUrl, app?, label? = "What's new", onNavigate? }`.
@@ -180,7 +180,7 @@ nothing renders. Without the prop the header is exactly as before.
 ```jsx
 import { WhatsNewButton } from '@mumma/shell/whatsnew';
 
-<WhatsNewButton baseUrl="https://admin.mumma.co" app="arcade" onNavigate={navigate} />
+<WhatsNewButton baseUrl="https://api.mumma.co" app="arcade" onNavigate={navigate} />
 <WhatsNewButton baseUrl={base} app="arcade" variant="text" label="Updates" />
 <WhatsNewButton baseUrl={base} app="arcade"
   renderTrigger={({ open, unread, label }) => <MyChip onClick={open}>{label} {unread || ''}</MyChip>} />
@@ -340,7 +340,9 @@ in as before, so a flaky auth site never locks anyone out.
   `GET /api/auth-status` with `Authorization: Bearer` and `credentials: 'omit'`
   — entitlements still come from `auth.mumma.co` (C-003), no cookie is read or
   written. Transient failure carries state forward with `stale: true`; an
-  expired bearer is retried once after a local refresh, then signs out. There is
+  expired bearer is retried once after a local refresh, then signs out. A
+  local refresh that fails because Supabase is unreachable
+  (`isTransientRefreshError`) is transient too, and keeps state. There is
   no wake watcher: call `checkAuthStatus()` from the app's `appStateChange`.
 - `NativeSignIn` props: `appName`, `title`, `helpText`, `onSignedIn`, `client`
   (omit inside a provider). Email code first, Apple button only when

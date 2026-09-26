@@ -7,6 +7,38 @@ const CLEARED: Omit<AuthState, 'status'> = {
   authenticated: false, user: null, session: null, appAccess: {}, subscription: null, household: null, stale: false,
 };
 
+/**
+ * How long before `expires_at` the client asks auth-status again. The service
+ * refreshes proactively once a session is within its 120s skew window
+ * (Mumapps-Auth pages/api/auth-status.js REFRESH_SKEW_SECONDS), so the re-check
+ * must land inside that window — and it stays clear of the 90s margin inside
+ * which @supabase/auth-js's getSession() would refresh the token itself.
+ */
+export const RECHECK_LEAD_SECONDS = 105;
+/** Shortest re-check delay, and the backoff bounds while auth-status is unreachable. */
+export const RECHECK_MIN_MS = 5_000;
+export const STALE_BACKOFF_MAX_MS = 5 * 60_000;
+
+/**
+ * Delay before the next auth-status re-check. Pure, for tests.
+ * - Normally: `expires_at - RECHECK_LEAD_SECONDS`, floored at RECHECK_MIN_MS
+ *   and clamped to setTimeout's 32-bit max (an overflowing delay fires at once,
+ *   which would turn this into a polling loop).
+ * - While `stale` (the last check could not reach the service): no sooner than
+ *   an exponential backoff, 5s → 10s → … → 5 min. Without it an offline tab
+ *   with an expiring token re-checked — and re-rendered every consumer — every
+ *   five seconds until the network came back.
+ */
+export function recheckDelayMs(expiresAt: number, nowMs: number, staleAttempts = 0): number {
+  const untilLead = (expiresAt - RECHECK_LEAD_SECONDS) * 1000 - nowMs;
+  let delay = Math.max(untilLead, RECHECK_MIN_MS);
+  if (staleAttempts > 0) {
+    const backoff = Math.min(RECHECK_MIN_MS * 2 ** Math.min(staleAttempts - 1, 16), STALE_BACKOFF_MAX_MS);
+    delay = Math.max(delay, backoff);
+  }
+  return Math.min(delay, 0x7fffffff);
+}
+
 function defaultIsStandalone(): boolean {
   try {
     return (
@@ -20,6 +52,10 @@ function defaultIsStandalone(): boolean {
  * Client side of the Mumapps Auth v4 contract (Mumapps-Auth docs/CONTRACT.md).
  * INVARIANTS this class enforces — do not "fix" these away:
  *  1. Never refreshes Supabase tokens itself; renewal = re-calling auth-status.
+ *     That includes NEVER calling supabase.auth.getSession(): auth-js
+ *     refreshes inside it whenever the stored token is within 90s of expiry,
+ *     autoRefreshToken:false or not. The bearer this client sends comes from
+ *     the last auth-status answer (or the bridge hash), never from Supabase.
  *  2. Never writes mumapps_* cookies.
  *  3. Transient failures (retryable/non-2xx/network) carry state forward, never log out.
  *  4. Cross-app sync via the mumapps_sid marker on focus/visibilitychange.
@@ -34,6 +70,10 @@ export class AuthClient implements AuthClientLike {
   private lastMarker: string | null = null;
   private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   private wakeHandler: (() => void) | null = null;
+  /** Consecutive re-checks scheduled while stale — drives the backoff. */
+  private staleAttempts = 0;
+  /** A token handed over by the standalone auth bridge, until auth-status answers. */
+  private bridgedAccessToken: string | null = null;
 
   constructor(config: AuthClientConfig) {
     this.supabase = config.supabase;
@@ -48,9 +88,9 @@ export class AuthClient implements AuthClientLike {
     return () => this.listeners.delete(fn);
   }
 
-  private setState(next: AuthState): void {
+  private setState(next: AuthState, notify = true): void {
     this.state = next;
-    this.listeners.forEach((fn) => { try { fn(next); } catch {} });
+    if (notify) this.listeners.forEach((fn) => { try { fn(next); } catch {} });
     this.scheduleExpiryRecheck();
   }
 
@@ -62,19 +102,29 @@ export class AuthClient implements AuthClientLike {
   }
 
   private carryForward(): AuthState {
+    // Already carried forward: nothing a consumer can see has changed, so
+    // don't wake every subscriber again — just re-arm the (backed-off) timer.
+    if (this.state.status === 'ready' && this.state.stale) {
+      this.setState(this.state, false);
+      return this.state;
+    }
     const kept: AuthState = { ...this.state, status: 'ready', stale: true };
     this.setState(kept);
     return kept;
+  }
+
+  /** The bearer for auth-status: the last answer's token, else a bridged one. */
+  private bearerToken(): string | null {
+    return this.state.session?.access_token || this.bridgedAccessToken || null;
   }
 
   private async doCheck(): Promise<AuthState> {
     let data: AuthStatusResponse;
     try {
       const headers: Record<string, string> = { Accept: 'application/json' };
-      try {
-        const { data: s } = await this.supabase.auth.getSession();
-        if (s?.session?.access_token) headers.Authorization = `Bearer ${s.session.access_token}`;
-      } catch {}
+      // Invariant 1: not supabase.auth.getSession() — see the class comment.
+      const bearer = this.bearerToken();
+      if (bearer) headers.Authorization = `Bearer ${bearer}`;
       const res = await fetch(`${this.authBaseUrl}/api/auth-status`, {
         credentials: 'include', cache: 'no-store', headers,
       });
@@ -88,6 +138,7 @@ export class AuthClient implements AuthClientLike {
 
     if (data.action === 'clear_cookies') {         // definitive: session is dead
       try { await this.supabase.auth.signOut(); } catch {}
+      this.bridgedAccessToken = null;
       const cleared: AuthState = { status: 'ready', ...CLEARED };
       this.lastMarker = readSessionMarker();
       this.setState(cleared);
@@ -101,6 +152,7 @@ export class AuthClient implements AuthClientLike {
           refresh_token: data.session.refresh_token,
         });
       } catch {} // best-effort; server truth wins for routing (see CONTRACT.md)
+      this.bridgedAccessToken = null; // the answer's own token supersedes it
       const next: AuthState = {
         status: 'ready', authenticated: true, stale: false,
         user: data.user, session: data.session,
@@ -112,6 +164,7 @@ export class AuthClient implements AuthClientLike {
       return next;
     }
 
+    this.bridgedAccessToken = null;
     const cleared: AuthState = { status: 'ready', ...CLEARED };
     this.lastMarker = readSessionMarker();
     this.setState(cleared);
@@ -132,7 +185,8 @@ export class AuthClient implements AuthClientLike {
       window.addEventListener('focus', this.wakeHandler);
       document.addEventListener('visibilitychange', this.wakeHandler);
     }
-    await consumeBridgeHash(this.supabase);
+    const bridged = await consumeBridgeHash(this.supabase);
+    if (bridged?.access_token) this.bridgedAccessToken = bridged.access_token;
     return this.checkAuthStatus();
   }
 
@@ -145,14 +199,13 @@ export class AuthClient implements AuthClientLike {
     if (this.expiryTimer) { clearTimeout(this.expiryTimer); this.expiryTimer = null; }
   }
 
-  /** Re-check ~60s before expiry; the service refreshes inside its skew window. */
+  /** Re-check RECHECK_LEAD_SECONDS before expiry, backing off while stale. */
   private scheduleExpiryRecheck(): void {
     if (this.expiryTimer) { clearTimeout(this.expiryTimer); this.expiryTimer = null; }
+    this.staleAttempts = this.state.stale ? this.staleAttempts + 1 : 0;
     const exp = this.state.session?.expires_at;
     if (!exp || !this.state.authenticated) return;
-    // Clamp to setTimeout's 32-bit max — an overflowing delay fires immediately,
-    // which would turn this into a 5s polling loop.
-    const delay = Math.min(Math.max((exp - 60 - Math.floor(Date.now() / 1000)) * 1000, 5000), 0x7fffffff);
+    const delay = recheckDelayMs(exp, Date.now(), this.staleAttempts);
     this.expiryTimer = setTimeout(() => { void this.checkAuthStatus(); }, delay);
   }
 
