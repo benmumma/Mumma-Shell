@@ -4,7 +4,7 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
-## Unreleased (proposed 0.8.2) — a Supabase outage no longer signs a device out
+## 0.8.2 — a Supabase outage no longer signs a device out
 
 - `NativeAuthClient`: when the device's access token has expired and Supabase
   is down, the local refresh fails with a retryable error, and the client
