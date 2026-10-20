@@ -4,10 +4,12 @@ The `@mumma/shell` shared package — auth client, React provider/hooks, and the
 `MummaHeader` chrome consumed by every suite client via a pinned release tarball.
 
 ## Suite conventions
-Suite contracts live in C:/Repositories/ml-strategy/_suite/contracts/. Before
-adding an AI feature, a new app surface, a widget, or access control, read the
-relevant contract. Track atomic work items in C:/Repositories/ml-strategy/_tasks/
-per the agent contract in that folder's README.
+Suite rules for every repo (branch flow, ship gate, authority, decisions,
+What's New) are in the ml-strategy repo, `_suite/AGENTS.md`; read it first.
+Suite contracts live in ml-strategy `_suite/contracts/`. Before adding an AI
+feature, a new app surface, a widget, or access control, read the relevant
+contract. Track atomic work items in ml-strategy `_tasks/` per the agent
+contract in that folder's README.
 
 ## What's New (C-007)
 - `@mumma/shell/whatsnew` (0.8.0+) is the suite's only What's New surface:
