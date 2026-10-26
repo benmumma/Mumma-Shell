@@ -1,8 +1,8 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { UseAgentInboxResult } from './hooks';
 import {
-  agoLabel, answerLine, blockText, classifyInboxLink, followThroughLine, historyDays, historyStatus, kindLabel,
-  progressFraction, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
+  agoLabel, answerLine, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
+  historyDays, historyStatus, kindLabel, progressFraction, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
 import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage } from './types';
@@ -322,6 +322,20 @@ function Answered({ item, inbox, name, s, c, now, locale }: {
   );
 }
 
+/** How this agent works, in one plain line, at the very top of its inbox. */
+function BehaviorLine({ page, s, c, now, locale }: {
+  page: NonNullable<UseAgentInboxResult['page']>; s: S; c: InboxColors; now: number; locale?: string;
+}) {
+  const line = behaviorLine(page, new Date(now), locale);
+  if (!line) return null;
+  return (
+    <p data-mumma-ai-behavior="" style={{ ...s.meta, display: 'flex', gap: '0.375rem', alignItems: 'flex-start', margin: '0 0 0.75rem', color: c.muted }}>
+      <span style={{ display: 'inline-flex', marginTop: '0.2rem', flex: 'none' }}><ClockIcon /></span>
+      <span>{line}</span>
+    </p>
+  );
+}
+
 function StatusBanner({ page, s, c, now, locale }: {
   page: NonNullable<UseAgentInboxResult['page']>; s: S; c: InboxColors; now: number; locale?: string;
 }) {
@@ -363,6 +377,12 @@ function NowView({ inbox, s, c, now, locale, onNavigate, onSeeHistory }: {
         <section style={s.section} aria-label="Your answers">
           <h3 style={s.h}>Your answers</h3>
           {page.answered.slice(0, 4).map(a => <Answered key={a.id} item={a} inbox={inbox} name={name} s={s} c={c} now={now} locale={locale} />)}
+          {canActNow(page) && (
+            <button type="button" style={{ ...s.quiet, margin: '0 0 0.5rem' }} disabled={inbox.busy.has('__wake')}
+              onClick={() => { void inbox.actNow(); }}>
+              Have {name} act on these now
+            </button>
+          )}
           {page.answered.length > 4 && (
             <button type="button" style={s.text} onClick={() => onSeeHistory('ask')}>All questions</button>
           )}
@@ -516,6 +536,7 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
 }) {
   const [draft, setDraft] = useState('');
   const busy = inbox.busy.has('__composer');
+  const hint = inbox.page ? composerHint(inbox.page, new Date(), locale) : null;
   const send = async (text: string) => {
     if (await inbox.send(text)) setDraft('');
   };
@@ -552,6 +573,7 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
           placeholder={`Message ${name}`} aria-label={`Message ${name}`} />
         <button type="submit" style={s.primary} disabled={busy || !draft.trim()}>Send</button>
       </form>
+      {hint && <p style={{ ...s.meta, margin: '0.375rem 0 0' }} data-mumma-ai-composer-hint="">{hint}</p>}
     </section>
   );
 }
@@ -634,6 +656,7 @@ export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation }:
 
   return (
     <div style={{ color: c.fg, fontSize: '0.9375rem', lineHeight: 1.5 }} data-mumma-agent-inbox="">
+      <BehaviorLine page={page} s={s} c={c} now={now} locale={locale} />
       <StatusBanner page={page} s={s} c={c} now={now} locale={locale} />
       <div role="tablist" aria-label={`${name} inbox`} style={{
         display: 'flex', gap: '0.25rem', padding: '0.25rem', margin: '0 0 1rem',

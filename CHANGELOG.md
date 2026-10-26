@@ -4,6 +4,23 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.11.0 — how each agent works, and Act now
+
+- `AgentInboxPanel` opens with one plain line on how the agent works: whether
+  it runs on its own schedule or when you answer, when it reads your answers
+  and messages, and when it next runs (or that it is paused). The status
+  banner no longer repeats the next run when that line is shown.
+- Under the message box, a hint says when the agent will read what you write
+  ("usually replies within a minute", or "reads this on its next run, at
+  9:30 PM tonight").
+- When an agent holds answers for its next run but can be woken, **Your
+  answers** offers "Have {name} act on these now".
+- `InboxPage.behavior` (`InboxBehavior`), pure helpers `behaviorLine`,
+  `composerHint`, `canActNow`, `createAgentInboxApi().wake`, and
+  `useAgentInbox().actNow`. Needs Mumapps-Server's `behavior` field and
+  `POST …/inbox/wake`; against an older server the line, hint and button
+  simply don't show.
+
 ## 0.10.0 — the agent inbox dock
 
 - `AgentInboxDock`: on a wide screen (≥ 1200 px) the inboxes are a sidebar

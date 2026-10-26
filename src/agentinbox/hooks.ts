@@ -88,6 +88,8 @@ export interface UseAgentInboxResult {
   dismiss: (item: InboxItem) => Promise<boolean>;
   snooze: (item: InboxItem, until: string) => Promise<boolean>;
   send: (body: string, itemId?: string | null) => Promise<boolean>;
+  /** Ask an agent that waits for its next run to act on its answers now. */
+  actNow: () => Promise<boolean>;
   markAllSeen: () => void;
   notes: InboxNotes | null;
   loadNotes: () => Promise<void>;
@@ -222,6 +224,15 @@ export function useAgentInbox(
     return true;
   }), [api, withBusy]);
 
+  const actNow = useCallback(() => withBusy('__wake', async () => {
+    const r = refRef.current;
+    if (!r || !api.wake) return false;
+    const res = await api.wake(r);
+    if (!res.ok) { setActionError(res.message); return false; }
+    await settle();
+    return true;
+  }), [api, settle, withBusy]);
+
   const markAllSeen = useCallback(() => {
     const r = refRef.current;
     if (!r) return;
@@ -270,7 +281,7 @@ export function useAgentInbox(
 
   return {
     page, loading, error, actionError, busy, refresh,
-    answer, undo, dismiss, snooze, send, markAllSeen, notes, loadNotes, forgetNote,
+    answer, undo, dismiss, snooze, send, actNow, markAllSeen, notes, loadNotes, forgetNote,
     history, loadHistory,
   };
 }
