@@ -82,3 +82,33 @@ test('reserveSpace false leaves the page alone but still says how wide it is', a
   expect(document.body.style.paddingRight).toBe('');
   expect(document.documentElement.style.getPropertyValue('--mumma-ai-dock-reserved')).toBe('var(--mumma-ai-dock-width, 22rem)');
 });
+
+test('the sidebar edge resizes by keys and drag, within limits, and remembers the width', async () => {
+  viewport(1400);
+  const prevWidth = window.innerWidth;
+  window.innerWidth = 1400;
+  const fetchImpl = server();
+  const { unmount } = render(<AgentInboxDock {...props(fetchImpl)} />);
+  const edge = await screen.findByRole('separator', { name: 'Resize the sidebar' });
+  fireEvent.keyDown(edge, { key: 'Home' });
+  expect(document.body.style.paddingRight).toBe('288px');
+  fireEvent.keyDown(edge, { key: 'ArrowLeft' });
+  expect(document.body.style.paddingRight).toBe('304px');
+  fireEvent.pointerDown(edge, { button: 0, pointerId: 1, clientX: 1100 });
+  fireEvent.pointerMove(edge, { pointerId: 1, clientX: 900 });
+  fireEvent.pointerUp(edge, { pointerId: 1, clientX: 900 });
+  expect(document.body.style.paddingRight).toBe('500px');
+  fireEvent.pointerDown(edge, { button: 0, pointerId: 1, clientX: 900 });
+  fireEvent.pointerMove(edge, { pointerId: 1, clientX: 10 });
+  fireEvent.pointerUp(edge, { pointerId: 1, clientX: 10 });
+  expect(document.body.style.paddingRight).toBe('720px');
+  expect(window.localStorage.getItem('mumma-ai-dock:fitter:width')).toBe('720');
+  unmount();
+  render(<AgentInboxDock {...props(fetchImpl)} />);
+  const again = await screen.findByRole('separator', { name: 'Resize the sidebar' });
+  expect(document.body.style.paddingRight).toBe('720px');
+  fireEvent.doubleClick(again);
+  expect(document.body.style.paddingRight).toBe('var(--mumma-ai-dock-width, 22rem)');
+  expect(window.localStorage.getItem('mumma-ai-dock:fitter:width')).toBeNull();
+  window.innerWidth = prevWidth;
+});

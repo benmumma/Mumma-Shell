@@ -14,7 +14,7 @@ export {
 export { AgentInboxPanel, CardTypePreview, type AgentInboxPanelProps } from './AgentInboxPanel';
 export { CARD_TYPES, cardTypeInfo, type CardType, type CardTypeInfo } from './cardTypes';
 export { AgentInboxButton, type AgentInboxButtonProps, type AgentInboxTriggerProps } from './AgentInboxButton';
-export { AgentInboxDock, DOCK_BREAKPOINT_PX, DOCK_WIDTH, type AgentInboxDockProps } from './AgentInboxDock';
+export { AgentInboxDock, DOCK_BREAKPOINT_PX, DOCK_WIDTH, DOCK_MIN_PX, DOCK_MAX_PX, clampDockWidth, type AgentInboxDockProps } from './AgentInboxDock';
 export { aiVar, colorsFrom, useInboxColors, type InboxColors } from './theme';
 export type {
   InboxItem, InboxItemKind, InboxBlock, InboxLink, InboxOption, InboxAnswer, InboxMessage, InboxProfile,
