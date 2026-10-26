@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { UseAgentInboxResult } from './hooks';
 import {
   agoLabel, answerLine, awaitingReply, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
-  historyDays, historyStatus, kindLabel, progressFraction, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
+  historyDays, historyStatus, isProfileChange, kindLabel, profileValue, progressFraction, scheduleRows, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
-import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage } from './types';
+import { cardTypeInfo } from './cardTypes';
+import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage, InboxTopic } from './types';
 
 export interface AgentInboxPanelProps {
   /** `useAgentInbox`'s result for the inbox to show. */
@@ -122,7 +123,7 @@ function LinkList({ links, onNavigate, s }: { links: InboxLink[]; onNavigate?: (
   );
 }
 
-function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxColors; onNavigate?: (p: string) => void; s: S }) {
+function Blocks({ blocks, c, onNavigate, s, now }: { blocks: InboxBlock[]; c: InboxColors; onNavigate?: (p: string) => void; s: S; now?: Date }) {
   if (!blocks.length) return null;
   const stats = blocks.filter(b => b.type === 'stat');
   return (
@@ -131,10 +132,13 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(5.5rem, 1fr))', gap: '0.5rem', margin: '0 0 0.625rem' }}>
           {stats.map((b, i) => (
             <div key={`s${i}`} style={{ padding: '0.5rem 0.625rem', borderRadius: AI_RADIUS, background: c.bg, border: `1px solid ${c.border}` }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.2 }}>
+              <div style={{ fontSize: String(b.value ?? '').length > 5 ? '1rem' : '1.125rem', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
                 {String(b.value ?? '')}{b.unit ? <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}> {String(b.unit)}</span> : null}
               </div>
               <div style={s.meta}>{String(b.label ?? '')}</div>
+              {typeof b.change === 'string' && b.change ? (
+                <div style={{ ...s.meta, color: c.fg, fontWeight: 600 }}>{b.change}</div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -155,6 +159,12 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
               </div>
             </div>
           );
+        }
+        if (b.type === 'schedule' && Array.isArray(b.rows)) {
+          return <ScheduleBlock key={i} block={b} c={c} s={s} now={now} />;
+        }
+        if (b.type === 'checklist' && Array.isArray(b.items)) {
+          return <ChecklistBlock key={i} block={b} c={c} s={s} />;
         }
         if ((b.type === 'checklist' || b.type === 'schedule') && Array.isArray(b.items)) {
           return (
@@ -181,6 +191,97 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
     </div>
   );
 }
+
+/**
+ * A card layout's sample, drawn small: the tile preview in a settings card
+ * gallery. Decorative (aria-hidden); the tile names the layout in text.
+ */
+export function CardTypePreview({ type, scale = 0.62, height = '7.5rem' }: { type: string; scale?: number; height?: string }) {
+  const c = useInboxColors();
+  const s = styles(c);
+  const info = cardTypeInfo(type);
+  if (!info) return null;
+  return (
+    <div aria-hidden="true" style={{ height, overflow: 'hidden', pointerEvents: 'none', borderRadius: AI_RADIUS, background: c.surface }}>
+      <div style={{ width: `${100 / scale}%`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '0.75rem', boxSizing: 'border-box', color: c.fg }}>
+        <h4 style={{ ...s.title, margin: '0 0 0.25rem' }}>{info.sample.title}</h4>
+        {info.sample.body ? <p style={{ ...s.body, margin: 0 }}>{info.sample.body}</p> : null}
+        <Blocks blocks={info.sample.blocks} c={c} s={s} now={new Date(2026, 9, 29)} />
+      </div>
+    </div>
+  );
+}
+
+function isVisualCard(profile: { cards?: { key: string; type?: string }[] } | undefined, card: InboxItem): boolean {
+  const type = profile?.cards?.find(x => x.key === card.card_key)?.type;
+  return Boolean(type && type !== 'note' && card.blocks.length);
+}
+
+const STATUS_LABEL: Record<string, string> = { done: 'Done', moved: 'Moved', skipped: 'Skipped', missed: 'Missed' };
+
+/** A Week card's schedule: one row per day, today marked, a chip per status. */
+function ScheduleBlock({ block, c, s, now }: { block: InboxBlock; c: InboxColors; s: S; now?: Date }) {
+  const rows = scheduleRows(block, now);
+  return (
+    <div style={{ margin: '0 0 0.625rem' }}>
+      {typeof block.title === 'string' && block.title ? <div style={{ ...s.meta, fontWeight: 600, margin: '0 0 0.25rem' }}>{block.title}</div> : null}
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {rows.map((r, j) => {
+          const quiet = r.status === 'done' || r.status === 'skipped' || r.status === 'missed';
+          return (
+            <li key={j} aria-current={r.today ? 'date' : undefined} style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4375rem 0.5rem',
+              borderTop: j ? `1px solid ${c.border}` : 'none',
+              ...(r.today ? { background: c.bg, borderRadius: AI_RADIUS, boxShadow: `inset 3px 0 0 ${c.accent}` } : {}),
+            }}>
+              <span style={{ flex: '0 0 2.75rem', textAlign: 'center', lineHeight: 1.1 }}>
+                <span style={{ display: 'block', ...s.meta, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{r.weekday}</span>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: '1.0625rem' }}>{r.day}</span>
+              </span>
+              <span style={{ flex: 1, minWidth: 0, ...(quiet ? { color: c.muted } : {}), ...(r.status === 'skipped' || r.status === 'missed' ? { textDecoration: 'line-through' } : {}) }}>
+                {r.label}
+              </span>
+              {r.status && STATUS_LABEL[r.status] ? (
+                <span style={{
+                  flex: 'none', fontSize: '0.75rem', fontWeight: 600, padding: '0.125rem 0.5rem', borderRadius: '999px',
+                  ...(r.status === 'done' ? { background: c.done, color: c.accentFg }
+                    : r.status === 'moved' ? { background: c.accent, color: c.accentFg }
+                      : { border: `1px solid ${c.border}`, color: c.muted }),
+                }}>{STATUS_LABEL[r.status]}</span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** A checklist with a ring per item, filled when done. */
+function ChecklistBlock({ block, c, s }: { block: InboxBlock; c: InboxColors; s: S }) {
+  const items = (block.items as { label?: string; done?: boolean }[]).filter(it => it && it.label);
+  const done = items.filter(it => it.done).length;
+  return (
+    <div style={{ margin: '0 0 0.625rem' }}>
+      <div style={{ ...s.meta, margin: '0 0 0.25rem' }}>{done} of {items.length} done</div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {items.map((it, j) => (
+          <li key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.3125rem 0', ...(it.done ? { color: c.muted } : {}) }}>
+            <span aria-hidden="true" style={{
+              flex: 'none', width: '1.125rem', height: '1.125rem', borderRadius: '50%', display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', lineHeight: 1,
+              ...(it.done ? { background: c.done, color: c.accentFg } : { border: `2px solid ${c.border}` }),
+            }}>{it.done ? '\u2713' : ''}</span>
+            <span style={it.done ? { textDecoration: 'line-through' } : undefined}>{it.label}</span>
+            <span style={visuallyHidden}>{it.done ? ' (done)' : ''}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const visuallyHidden: CSSProperties = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
 
 /** Body text that folds to three lines once it is long, with More / Less. */
 function Folding({ text, s, threshold = 220 }: { text: string; s: S; threshold?: number }) {
@@ -398,8 +499,18 @@ function NowView({ inbox, s, c, now, locale, onNavigate, onSeeHistory }: {
                 <h4 style={{ ...s.title, marginRight: 'auto' }}>{card.title}</h4>
                 <span style={s.meta}>{agoLabel(card.updated_at, new Date(now), locale)}</span>
               </div>
-              {card.body && <Folding text={card.body} s={s} threshold={400} />}
-              <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+              {/* A typed card leads with its picture; its body is a caption under it. */}
+              {isVisualCard(page.profile, card) ? (
+                <>
+                  <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+                  {card.body && <p style={{ ...s.body, ...s.muted, margin: '0 0 0.25rem' }}>{card.body}</p>}
+                </>
+              ) : (
+                <>
+                  {card.body && <Folding text={card.body} s={s} threshold={400} />}
+                  <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+                </>
+              )}
               <LinkList links={card.links} onNavigate={onNavigate} s={s} />
             </article>
           ))}
@@ -414,6 +525,10 @@ function NowView({ inbox, s, c, now, locale, onNavigate, onSeeHistory }: {
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
                   {u.unseen && <span style={{ ...s.dot, background: c.accent, alignSelf: 'center' }} aria-label="New" />}
                   <span style={{ ...s.meta, marginRight: 'auto' }}>{agoLabel(u.created_at, new Date(now), locale)}</span>
+                  {isProfileChange(u) && (
+                    <button type="button" style={{ ...s.text, minHeight: 0, padding: '0.125rem 0.25rem' }} aria-label="Undo this profile change"
+                      disabled={inbox.busy.has(u.id)} onClick={() => { void inbox.undoProfile(u); }}>Undo</button>
+                  )}
                   <button type="button" style={{ ...s.text, minHeight: 0, padding: '0.125rem 0.25rem' }} aria-label="Clear this update"
                     disabled={inbox.busy.has(u.id)} onClick={() => { void inbox.dismiss(u); }}>Clear</button>
                 </div>
@@ -582,15 +697,37 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
   messages: InboxMessage[]; inbox: UseAgentInboxResult; name: string; s: S; c: InboxColors; prompts: string[]; locale?: string;
 }) {
   const [draft, setDraft] = useState('');
+  const [view, setView] = useState<'chat' | 'topics' | { id: string }>('chat');
   const busy = inbox.busy.has('__composer');
+  const topic = inbox.hasTopics ? inbox.page?.topic ?? null : null;
   const waiting = inbox.page ? awaitingReply(inbox.page) : false;
   // The working bubble already says it; the line under the box would repeat it.
   const hint = inbox.page && !waiting ? composerHint(inbox.page, new Date(), locale) : null;
   const send = async (text: string) => {
     if (await inbox.send(text)) setDraft('');
   };
+  if (inbox.hasTopics && view === 'topics') {
+    return <TopicList inbox={inbox} name={name} s={s} c={c} locale={locale} onBack={() => setView('chat')} onOpen={id => setView({ id })} />;
+  }
+  if (inbox.hasTopics && typeof view === 'object') {
+    return <TopicReader inbox={inbox} topicId={view.id} name={name} s={s} c={c} locale={locale}
+      onBack={() => setView('topics')} onContinue={async () => { if (await inbox.reopenTopic(view.id)) setView('chat'); }} />;
+  }
   return (
     <section aria-label={`Talk to ${name}`}>
+      {topic && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem', paddingBottom: '0.5rem', borderBottom: `1px solid ${c.border}` }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <div style={s.eyebrow}>Topic</div>
+            <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {topic.title || (messages.length ? 'Untitled topic' : 'New topic')}
+            </div>
+          </div>
+          <button type="button" style={s.text} onClick={() => { setView('topics'); void inbox.loadTopics(); }}>Topics</button>
+          <button type="button" style={s.quiet} disabled={inbox.busy.has('__topic') || messages.length === 0}
+            onClick={() => { void inbox.newTopic(); }}>New topic</button>
+        </div>
+      )}
       {messages.length === 0 && (
         <p style={{ ...s.muted, margin: '0 0 0.75rem' }}>
           Tell {name} something it should know, or ask it a question. It replies here.
@@ -624,6 +761,11 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
           <div style={{ ...s.meta, fontSize: '0.75rem', marginTop: '0.125rem' }}>Replies usually take a few minutes</div>
         </div>
       )}
+      {topic?.stale && messages.length > 0 && !waiting && (
+        <p style={{ ...s.meta, textAlign: 'center', margin: '0 0 0.625rem' }} data-mumma-ai-topic-stale="">
+          It has been a while. Your next message starts a new topic.
+        </p>
+      )}
       {prompts.length > 0 && (
         <div style={s.row}>
           {prompts.map(p => <button key={p} type="button" style={s.quiet} disabled={busy} onClick={() => { void send(p); }}>{p}</button>)}
@@ -635,6 +777,93 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
         <button type="submit" style={s.primary} disabled={busy || !draft.trim()}>Send</button>
       </form>
       {hint && <p style={{ ...s.meta, margin: '0.375rem 0 0' }} data-mumma-ai-composer-hint="">{hint}</p>}
+    </section>
+  );
+}
+
+function topicDates(t: InboxTopic, locale?: string): string {
+  const d = (iso: string) => new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  const a = d(t.opened_at);
+  const b = d(t.last_message_at);
+  return a === b ? a : `${a} – ${b}`;
+}
+
+/** Every topic, newest first: title, dates and the agent's summary. */
+function TopicList({ inbox, name, s, c, locale, onBack, onOpen }: {
+  inbox: UseAgentInboxResult; name: string; s: S; c: InboxColors; locale?: string; onBack: () => void; onOpen: (id: string) => void;
+}) {
+  const t = inbox.topics;
+  return (
+    <section aria-label="Topics">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem' }}>
+        <button type="button" style={s.text} onClick={onBack}>Back</button>
+        <h3 style={{ ...s.h, margin: 0 }}>Topics</h3>
+      </div>
+      <p style={{ ...s.muted, margin: '0 0 0.75rem' }}>
+        {name} reads the current topic in full and earlier ones as these summaries.
+      </p>
+      {(!t || (t.loading && !t.items.length)) && <p style={s.muted}>Loading…</p>}
+      {t && !t.loading && t.items.length === 0 && <p style={s.muted}>No topics yet.</p>}
+      {t?.items.map(x => (
+        <button key={x.id} type="button" onClick={() => onOpen(x.id)}
+          style={{ ...s.card, display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', color: c.fg, font: 'inherit' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
+            <span style={{ fontWeight: 600, marginRight: 'auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {x.title || 'Untitled topic'}
+            </span>
+            {!x.closed_at && <span style={{ ...s.meta, color: c.accent, fontWeight: 600 }}>Current</span>}
+            <span style={s.meta}>{topicDates(x, locale)}</span>
+          </div>
+          {x.summary
+            ? <div style={{ ...s.body, ...s.muted, marginTop: '0.25rem' }}>{x.summary}</div>
+            : x.closed_at ? <div style={{ ...s.meta, marginTop: '0.25rem' }}>{name} sums this up on its next run.</div> : null}
+        </button>
+      ))}
+      {t?.nextBefore && (
+        <button type="button" style={s.text} disabled={t.loading} onClick={() => { void inbox.loadTopics({ more: true }); }}>Earlier topics</button>
+      )}
+    </section>
+  );
+}
+
+/** An earlier topic, read-only, with Continue this topic. */
+function TopicReader({ inbox, topicId, name, s, c, locale, onBack, onContinue }: {
+  inbox: UseAgentInboxResult; topicId: string; name: string; s: S; c: InboxColors; locale?: string;
+  onBack: () => void; onContinue: () => void;
+}) {
+  const [data, setData] = useState<{ topic: InboxTopic; messages: InboxMessage[] } | null | undefined>(undefined);
+  const { readTopic } = inbox;
+  useEffect(() => {
+    let live = true;
+    void readTopic(topicId).then(d => { if (live) setData(d); });
+    return () => { live = false; };
+  }, [readTopic, topicId]);
+  return (
+    <section aria-label={data?.topic.title || 'Topic'}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem' }}>
+        <button type="button" style={s.text} onClick={onBack}>Topics</button>
+        <h3 style={{ ...s.h, margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data?.topic.title || 'Untitled topic'}</h3>
+      </div>
+      {data === undefined && <p style={s.muted}>Loading…</p>}
+      {data === null && <p style={s.muted}>This topic could not be loaded.</p>}
+      {data?.topic.summary && <p style={{ ...s.card, ...s.body, margin: '0 0 0.75rem' }}>{data.topic.summary}</p>}
+      {data?.messages.map(m => {
+        const mine = m.author_type === 'member';
+        return (
+          <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', margin: '0 0 0.625rem' }}>
+            <div style={{
+              padding: '0.5rem 0.75rem', borderRadius: AI_RADIUS, maxWidth: '85%', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+              ...(mine ? { background: c.accent, color: c.accentFg } : { background: c.surface, border: `1px solid ${c.border}` }),
+            }}>{m.body}</div>
+            <div style={{ ...s.meta, fontSize: '0.75rem', marginTop: '0.125rem' }}>
+              {mine ? 'You' : name} · {new Date(m.created_at).toLocaleString(locale, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+            </div>
+          </div>
+        );
+      })}
+      {data && data.topic.closed_at && (
+        <button type="button" style={s.primary} disabled={inbox.busy.has('__topic')} onClick={onContinue}>Continue this topic</button>
+      )}
     </section>
   );
 }
@@ -668,6 +897,22 @@ function Memory({ inbox, name, s, c }: { inbox: UseAgentInboxResult; name: strin
           </div>
           {notes.used_chars.toLocaleString()} of {notes.max_chars.toLocaleString()} characters
         </div>
+      )}
+      {notes?.profile && (
+        <section aria-label={`Your ${notes.profile.label} profile`} style={{ marginTop: '1rem' }}>
+          <div style={s.eyebrow}>From your {notes.profile.label} profile</div>
+          <p style={{ ...s.muted, margin: '0.25rem 0 0.5rem' }}>
+            Lasting preferences every Claude reads. {name} adds to it with an update you can undo.
+          </p>
+          {(!notes.profile.exists || Object.keys(notes.profile.fields).length === 0)
+            ? <p style={s.muted}>Nothing saved yet.</p>
+            : Object.entries(notes.profile.fields).map(([k, v]) => (
+              <div key={k} style={s.card}>
+                <div style={s.eyebrow}>{k.replace(/[_-]/g, ' ')}</div>
+                <div style={s.body}>{profileValue(v)}</div>
+              </div>
+            ))}
+        </section>
       )}
     </section>
   );

@@ -4,6 +4,35 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.12.0 — visual Now cards, conversation topics, and profile memory
+
+- **Card catalog.** `CARD_TYPES` lists the six card layouts (Week, Next up,
+  Progress, Numbers, Checklist, Note), mirroring Mumapps-Server's catalog,
+  and `CardTypePreview` draws a layout's sample small for a settings
+  gallery. `InboxProfile.cards[]` gains an optional `type`.
+- **Week cards draw as a week.** Schedule blocks now render the server's
+  shape (`rows: [{ date, label, status }]`): a weekday and date per row, today
+  marked, and a chip for done, moved, skipped or missed. Before this they fell
+  back to plain text. New `scheduleRows`.
+- Checklists show a ring per item and "n of m done". Stat tiles show their
+  `change` and shrink long values to fit.
+- A typed card (anything but Note) leads with its picture, and its body is a
+  caption under it.
+- **Topics.** On a server with inbox topics (Mumapps-Server inbox m2), the
+  conversation shows its current topic's title with **Topics** and **New
+  topic**. Topics lists every topic with the agent's summary; an earlier one
+  reads back and **Continue this topic** makes it current again. A topic
+  quiet for 12 hours says the next message starts a new one. The API client
+  gains `listTopics`, `getTopic`, `startTopic`, `reopenTopic`; the hook gains
+  `hasTopics`, `newTopic`, `reopenTopic`, `topics`, `loadTopics`,
+  `readTopic`. Against an older server nothing changes.
+- **Profile memory.** Memory shows "From your <domain> profile": the
+  lasting preferences every Claude reads, which the agent now writes to
+  directly (`InboxNotes.profile`, read-only here). Each such write arrives as
+  an update with **Undo** beside Clear; Undo puts the old values back. New
+  `undoProfileChange` (API), `undoProfile` (hook), `isProfileChange`,
+  `profileValue`.
+
 ## 0.11.1 — a chat box that grows, and "working on it"
 
 - The message box (and "Answer in your own words") is a textarea that grows

@@ -76,11 +76,13 @@ export interface InboxMessage {
   author_member_id?: string | null;
   body: string;
   created_at: string;
+  topic_id?: string | null;
 }
 
 export interface InboxProfile {
   home_apps: string[];
-  cards: { key: string; label: string }[];
+  /** `type` is a card-catalog layout (cardTypes.ts); absent on a free-form card. */
+  cards: { key: string; label: string; type?: string }[];
   composer: { enabled: boolean; quick_prompts: string[] };
   notify: { push: 'asks' | 'all' | 'none'; badge: 'asks' | 'unread' };
   answers: { wake: 'immediate' | 'next_run' };
@@ -121,6 +123,23 @@ export interface InboxPage {
   next_run_at?: string | null;
   /** How the agent actually behaves (Mumapps-Server 2026-10-27+); absent on older servers. */
   behavior?: InboxBehavior;
+  /**
+   * The current conversation topic (Mumapps-Server inbox m2). `messages` are
+   * its messages. `id` null: no topic yet. `stale`: your next message starts a
+   * new topic. Absent or null on a server without topics.
+   */
+  topic?: { id: string | null; title: string | null; opened_at: string | null; stale: boolean } | null;
+}
+
+/** One conversation topic (`GET …/inbox/topics`). */
+export interface InboxTopic {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  opened_at: string;
+  last_message_at: string;
+  /** null = the current topic. */
+  closed_at: string | null;
 }
 
 /**
@@ -161,6 +180,11 @@ export interface InboxNotes {
   notes: InboxNote[];
   used_chars: number;
   max_chars: number;
+  /**
+   * The recipient's context profile in the agent's domain, shown beside its
+   * notes (Mumapps-Server 2026-10-26+; null for anyone else or no domain).
+   */
+  profile?: { domain: string; label: string; exists: boolean; fields: Record<string, unknown>; updated_at: string | null } | null;
 }
 
 /** A write's outcome. Writes never throw either. */
