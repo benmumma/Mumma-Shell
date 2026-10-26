@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { UseAgentInboxResult } from './hooks';
 import {
   agoLabel, answerLine, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
@@ -266,8 +266,8 @@ function AskCard({ item, inbox, name, s, c, now, locale }: {
       )}
       {(textOnly || item.allow_other !== false) && (writing ? (
         <form style={s.row} onSubmit={e => { e.preventDefault(); if (text.trim()) void inbox.answer(item, { text: text.trim() }); }}>
-          <input style={s.input} value={text} onChange={e => setText(e.target.value)} maxLength={2000} autoFocus={!textOnly}
-            placeholder={textOnly ? 'Your answer' : 'Your own answer'} aria-label="Answer in your own words" />
+          <GrowingInput style={s.input} value={text} onChange={setText} autoFocus={!textOnly}
+            placeholder={textOnly ? 'Your answer' : 'Your own answer'} label="Answer in your own words" />
           <button type="submit" style={s.primary} disabled={busy || !text.trim()}>Send</button>
         </form>
       ) : (
@@ -531,6 +531,38 @@ function HistoryView({ inbox, s, c, now, locale, kind, onKind }: {
 
 // ── Chat and memory ──────────────────────────────────────────────────────────
 
+/**
+ * A message box that grows with what you write, like a chat app's: one line
+ * empty, up to about eight lines, then it scrolls. Enter sends (it submits
+ * the surrounding form); Shift+Enter starts a new line; Enter while an input
+ * method is composing (Japanese, Chinese) is left alone.
+ */
+const GROW_MAX_PX = 192;
+function GrowingInput({ value, onChange, style, placeholder, label, autoFocus }: {
+  value: string; onChange: (v: string) => void; style: CSSProperties; placeholder: string; label: string; autoFocus?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const h = Math.min(el.scrollHeight, GROW_MAX_PX);
+    if (h > 0) el.style.height = `${h + (el.offsetHeight - el.clientHeight)}px`;
+    el.style.overflowY = el.scrollHeight > GROW_MAX_PX ? 'auto' : 'hidden';
+  }, [value]);
+  return (
+    <textarea ref={ref} rows={1} value={value} maxLength={2000} autoFocus={autoFocus}
+      placeholder={placeholder} aria-label={label} data-mumma-ai-composer=""
+      style={{ ...style, resize: 'none', lineHeight: 1.4, display: 'block', overflowY: 'hidden' }}
+      onChange={e => onChange(e.target.value)}
+      onKeyDown={e => {
+        if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        e.currentTarget.form?.requestSubmit();
+      }} />
+  );
+}
+
 function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
   messages: InboxMessage[]; inbox: UseAgentInboxResult; name: string; s: S; c: InboxColors; prompts: string[]; locale?: string;
 }) {
@@ -568,9 +600,9 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
           {prompts.map(p => <button key={p} type="button" style={s.quiet} disabled={busy} onClick={() => { void send(p); }}>{p}</button>)}
         </div>
       )}
-      <form style={s.row} onSubmit={e => { e.preventDefault(); void send(draft); }}>
-        <input style={s.input} value={draft} onChange={e => setDraft(e.target.value)} maxLength={2000}
-          placeholder={`Message ${name}`} aria-label={`Message ${name}`} />
+      <form style={{ ...s.row, alignItems: 'flex-end' }} onSubmit={e => { e.preventDefault(); void send(draft); }}>
+        <GrowingInput style={s.input} value={draft} onChange={setDraft}
+          placeholder={`Message ${name}`} label={`Message ${name}`} />
         <button type="submit" style={s.primary} disabled={busy || !draft.trim()}>Send</button>
       </form>
       {hint && <p style={{ ...s.meta, margin: '0.375rem 0 0' }} data-mumma-ai-composer-hint="">{hint}</p>}

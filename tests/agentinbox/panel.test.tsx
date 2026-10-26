@@ -140,3 +140,21 @@ test('the panel opens with how the agent works, and Act now wakes it', async () 
   fireEvent.click(screen.getByRole('tab', { name: /Chat/ }));
   expect(await screen.findByText(/Coach usually replies within a minute/)).toBeTruthy();
 });
+
+test('the message box is a growing textarea: Enter sends, Shift+Enter keeps writing', async () => {
+  const sent: string[] = [];
+  const fetchImpl = server({
+    [`POST ${inboxPath(ref, '/messages')}`]: (_u, init) => { const body = JSON.parse(String(init.body)).body; sent.push(body);
+      return ok({ message: { id: 'm1', item_id: null, author_type: 'member', author_member_id: 'ben', body, created_at: '2026-10-26T15:00:00.000Z' } }); },
+  });
+  render(<AgentInboxButton baseUrl="https://api.test" app="fitter" getToken={() => 't'} fetchImpl={fetchImpl} pollMs={0} open />);
+  fireEvent.click(await screen.findByRole('tab', { name: /Chat/ }));
+  const box = screen.getByRole('textbox', { name: 'Message Coach' });
+  expect(box.tagName).toBe('TEXTAREA');
+  fireEvent.change(box, { target: { value: 'Line one' } });
+  fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+  expect(sent).toEqual([]);
+  fireEvent.change(box, { target: { value: 'Line one\nLine two' } });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  await waitFor(() => expect(sent).toEqual(['Line one\nLine two']));
+});
