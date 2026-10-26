@@ -4,6 +4,16 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.13.0 — a sidebar you can resize
+
+- **Drag the sidebar's left edge to resize it.** `AgentInboxDock` gains a
+  resize handle (`role="separator"`): drag it, or focus it and use the arrow
+  keys (Home and End for narrowest and widest). The width runs from 288px to
+  720px and always leaves the app at least 480px. The page makes room as you
+  drag. The width is remembered per app (`<storageKey>:width`), and a
+  double-click puts back the app's default (`--mumma-ai-dock-width`).
+  New exports `DOCK_MIN_PX`, `DOCK_MAX_PX` and `clampDockWidth`.
+
 ## 0.12.0 — visual Now cards, conversation topics, and profile memory
 
 - **Card catalog.** `CARD_TYPES` lists the six card layouts (Week, Next up,
