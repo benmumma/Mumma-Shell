@@ -5,6 +5,7 @@ export {
 export {
   badgeCount, totalBadge, whenLabel, undoRemainingMs, answerLine, followThroughLine, blockText,
   progressFraction, classifyInboxLink, snoozeOptions, statusSummary, agoLabel, historyDays, kindLabel, historyStatus,
+  behaviorLine, composerHint, canActNow,
 } from './logic';
 export {
   useAgentInboxApi, useAgentInboxes, useAgentInbox, INBOX_POLL_MS,
@@ -17,4 +18,5 @@ export { aiVar, colorsFrom, useInboxColors, type InboxColors } from './theme';
 export type {
   InboxItem, InboxItemKind, InboxBlock, InboxLink, InboxOption, InboxAnswer, InboxMessage, InboxProfile,
   InboxSummary, InboxPage, InboxNote, InboxNotes, InboxResult, FollowThrough, InboxHistoryPage, InboxHistoryKind,
+  InboxBehavior,
 } from './types';

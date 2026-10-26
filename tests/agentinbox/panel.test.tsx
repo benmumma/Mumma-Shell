@@ -1,6 +1,9 @@
 import { test, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { AgentInboxButton, inboxPath, statusSummary, historyDays, historyStatus, agoLabel } from '../../src/agentinbox';
+import {
+  AgentInboxButton, inboxPath, statusSummary, historyDays, historyStatus, agoLabel, behaviorLine, composerHint, canActNow,
+  type InboxBehavior,
+} from '../../src/agentinbox';
 import { COACH, HH, item, ok, page, routeFetch, summary } from './fixtures';
 
 const ref = { householdId: HH, instanceId: COACH };
@@ -90,4 +93,50 @@ test('an empty inbox explains itself instead of showing a blank panel', async ()
   expect(await screen.findByText('Nothing needs you')).toBeTruthy();
   expect(screen.getByText('All quiet')).toBeTruthy();
   expect(screen.getByText(/When Coach has a plan, news, or a question for you/)).toBeTruthy();
+});
+
+const NEXT = new Date('2026-10-26T21:30:00').toISOString();
+const beh = (over: Partial<InboxBehavior> = {}): InboxBehavior => ({
+  can_wake: true, answers: 'soon', messages: 'soon', schedule: 'scheduled', paused: false, ...over,
+});
+
+test('the behaviour line says in plain words when the agent runs and reads what you send', () => {
+  const at = (behavior: InboxBehavior | undefined, next: string | null = NEXT) =>
+    behaviorLine({ name: 'Coach', next_run_at: next, behavior }, NOW, 'en-US');
+  expect(at(undefined)).toBeNull();
+  expect(at(beh({ can_wake: false, answers: 'next_run', messages: 'next_run' })))
+    .toMatch(/^Coach runs on its own schedule and reads your answers and messages then\. Next run at 9:30/);
+  expect(at(beh({ answers: 'next_run' }))).toMatch(/^Coach acts on your answers at its next run and replies to messages within a minute\. Next run/);
+  expect(at(beh())).toMatch(/^Coach acts on your answers and messages within a minute\. Next scheduled run at 9:30/);
+  expect(at(beh({ schedule: 'on_demand' }), null)).toBe('Coach runs when you answer or write, and acts within a minute.');
+  expect(at(beh({ paused: true, can_wake: false }))).toMatch(/^Coach is paused/);
+  // The banner no longer repeats the next run once the behaviour line says it.
+  expect(statusSummary({ name: 'Coach', asks: [], next_run_at: NEXT, behavior: beh() }, NOW).detail).toBeNull();
+});
+
+test('the composer hint and Act now follow the behaviour', () => {
+  const p = (behavior: InboxBehavior) => ({ name: 'Coach', next_run_at: NEXT, behavior });
+  expect(composerHint(p(beh()), NOW, 'en-US')).toBe('Coach usually replies within a minute.');
+  expect(composerHint(p(beh({ can_wake: false, messages: 'next_run' })), NOW, 'en-US')).toMatch(/^Coach reads this on its next run, at 9:30/);
+  const pending = [item({ id: 'a1', status: 'answered', follow_through: 'pending' })];
+  expect(canActNow({ answered: pending, behavior: beh({ answers: 'next_run' }) })).toBe(true);
+  expect(canActNow({ answered: pending, behavior: beh() })).toBe(false);
+  expect(canActNow({ answered: pending, behavior: beh({ can_wake: false, answers: 'next_run' }) })).toBe(false);
+  expect(canActNow({ answered: [], behavior: beh({ answers: 'next_run' }) })).toBe(false);
+});
+
+test('the panel opens with how the agent works, and Act now wakes it', async () => {
+  const answered = item({ id: 'a1', status: 'answered', follow_through: 'pending', answer: { keys: ['sun'], labels: ['Sunday'], text: null } });
+  const fetchImpl = server({
+    [`GET ${inboxPath(ref)}`]: () => ok(page({ next_run_at: NEXT, answered: [answered], behavior: beh({ answers: 'next_run' }) })),
+    [`POST ${inboxPath(ref, '/wake')}`]: () => ok({ acts_at: NOW.toISOString() }),
+  });
+  const { container } = render(<AgentInboxButton baseUrl="https://api.test" app="fitter" getToken={() => 't'} fetchImpl={fetchImpl} pollMs={0} open />);
+  expect(await screen.findByText(/Coach acts on your answers at its next run/)).toBeTruthy();
+  expect(container.ownerDocument.querySelector('[data-mumma-ai-behavior]')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Have Coach act on these now' }));
+  await waitFor(() => expect(fetchImpl.mock.calls.some(([u, init]) =>
+    String(u).endsWith(inboxPath(ref, '/wake')) && (init as RequestInit)?.method === 'POST')).toBe(true));
+  fireEvent.click(screen.getByRole('tab', { name: /Chat/ }));
+  expect(await screen.findByText(/Coach usually replies within a minute/)).toBeTruthy();
 });

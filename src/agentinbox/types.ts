@@ -117,6 +117,24 @@ export interface InboxPage {
   seen_at: string | null;
   /** When the agent next runs on its own (Mumapps-Server 2026-10-26+), or null. */
   next_run_at?: string | null;
+  /** How the agent actually behaves (Mumapps-Server 2026-10-27+); absent on older servers. */
+  behavior?: InboxBehavior;
+}
+
+/**
+ * The agent's behaviour net of its profile, delivery mode and schedule — what
+ * the one line at the top of its inbox says.
+ */
+export interface InboxBehavior {
+  /** The app can start a run now (false for a self-scheduled routine or a paused agent). */
+  can_wake: boolean;
+  /** 'soon': a run shortly after you answer. 'next_run': it reads answers on its next run. */
+  answers: 'soon' | 'next_run';
+  /** 'soon': a run shortly after you write. 'next_run': it reads messages on its next run. */
+  messages: 'soon' | 'next_run';
+  /** 'scheduled': it runs on a clock (see next_run_at). 'on_demand': only when woken. */
+  schedule: 'scheduled' | 'on_demand';
+  paused: boolean;
 }
 
 /** `GET …/inbox/history`: everything the agent wrote, newest first. */

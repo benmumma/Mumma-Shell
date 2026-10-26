@@ -126,13 +126,14 @@ export function snoozeOptions(now: Date = new Date()): { label: string; until: s
  * and when the agent next checks in.
  */
 export function statusSummary(
-  page: Pick<InboxPage, 'asks' | 'name' | 'next_run_at'>,
+  page: Pick<InboxPage, 'asks' | 'name' | 'next_run_at' | 'behavior'>,
   now: Date = new Date(),
   locale?: string,
 ): { tone: 'attention' | 'calm'; headline: string; detail: string | null } {
   const n = page.asks.length;
   const next = whenLabel(page.next_run_at ?? null, now, locale);
-  const checkIn = next ? `${page.name} next checks in ${next}.` : null;
+  // With a behaviour line above the banner, the next run is already said there.
+  const checkIn = next && !page.behavior ? `${page.name} next checks in ${next}.` : null;
   if (n === 0) return { tone: 'calm', headline: 'Nothing needs you', detail: checkIn };
   const due = page.asks.map(a => a.due_at).filter((d): d is string => Boolean(d)).sort()[0];
   const dueLabel = whenLabel(due ?? null, now, locale);
@@ -204,4 +205,55 @@ export function historyStatus(item: Pick<InboxItem, 'kind' | 'status' | 'expires
       return null;
     default: return null;
   }
+}
+
+/**
+ * The one line at the top of an inbox: when this agent runs and when it reads
+ * what you send, in plain words, from the server's `behavior`. Null on a
+ * server that does not report it.
+ */
+export function behaviorLine(
+  page: Pick<InboxPage, 'name' | 'next_run_at' | 'behavior'>,
+  now: Date = new Date(),
+  locale?: string,
+): string | null {
+  const b = page.behavior;
+  if (!b) return null;
+  const name = page.name;
+  const next = b.schedule === 'scheduled' ? whenLabel(page.next_run_at ?? null, now, locale) : null;
+  if (b.paused) return `${name} is paused, so it won't run or read anything until it's switched back on.`;
+  if (!b.can_wake) {
+    return `${name} runs on its own schedule and reads your answers and messages then.`
+      + (next ? ` Next run ${next}.` : '');
+  }
+  if (b.answers === 'next_run') {
+    return `${name} acts on your answers at its next run and replies to messages within a minute.`
+      + (next ? ` Next run ${next}.` : '');
+  }
+  if (b.schedule === 'scheduled') {
+    return `${name} acts on your answers and messages within a minute.`
+      + (next ? ` Next scheduled run ${next}.` : '');
+  }
+  return `${name} runs when you answer or write, and acts within a minute.`;
+}
+
+/** Under the message box: when this agent will read what you write. */
+export function composerHint(
+  page: Pick<InboxPage, 'name' | 'next_run_at' | 'behavior'>,
+  now: Date = new Date(),
+  locale?: string,
+): string | null {
+  const b = page.behavior;
+  if (!b) return null;
+  if (b.paused) return `${page.name} is paused and won't read this until it's switched back on.`;
+  if (b.messages === 'soon') return `${page.name} usually replies within a minute.`;
+  const next = whenLabel(page.next_run_at ?? null, now, locale);
+  return next ? `${page.name} reads this on its next run, ${next}.` : `${page.name} reads this on its next run.`;
+}
+
+/** Can the person ask a waiting agent to act on its answers now? */
+export function canActNow(page: Pick<InboxPage, 'answered' | 'behavior'>): boolean {
+  const b = page.behavior;
+  return Boolean(b && b.can_wake && b.answers === 'next_run'
+    && page.answered.some(a => a.follow_through === 'pending'));
 }

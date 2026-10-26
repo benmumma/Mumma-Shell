@@ -29,6 +29,8 @@ export interface AgentInboxApi {
   /** Null on any failure, including a server older than the history route. */
   getHistory(ref: InboxRef, opts?: { before?: string | null; kind?: InboxHistoryKind | null; limit?: number }): Promise<InboxHistoryPage | null>;
   forgetNote(ref: InboxRef, noteId: string): Promise<InboxResult<{ forgotten: boolean }>>;
+  /** "Act on it now": one run with the answers still waiting (Mumapps-Server 2026-10-27+). */
+  wake?(ref: InboxRef): Promise<InboxResult<{ acts_at: string }>>;
 }
 
 export interface InboxRef {
@@ -117,6 +119,7 @@ export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchI
     dismiss: (ref, itemId) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/dismiss`)),
     snooze: (ref, itemId, until) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/snooze`), { until }),
     markSeen: (ref, body) => call('POST', inboxPath(ref, '/seen'), body),
+    wake: (ref) => call('POST', inboxPath(ref, '/wake')),
     sendMessage: (ref, body, itemId = null) => call('POST', inboxPath(ref, '/messages'), itemId ? { body, item_id: itemId } : { body }),
     async getNotes(ref) {
       return read<InboxNotes>(inboxPath(ref, '/notes'));

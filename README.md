@@ -408,6 +408,12 @@ question then says what happens next ("Coach will act on this at 9 PM
 tonight", or the agent's outcome). Links are rendered only for in-app paths
 and `https://`.
 
+The panel opens with one line on how the agent works (0.11.0+, from the
+server's `behavior`): whether it runs on its own schedule or when you answer,
+and when it next runs. The message box says when the agent will read what you
+write, and an agent holding answers for its next run offers "Act on these
+now" (`inbox.actNow()`, `POST …/inbox/wake`) when it can be woken.
+
 Theming: `--mumma-ai-*` custom properties (`bg`, `fg`, `muted`, `accent`,
 `accent-fg`, `border`, `surface`, `attention`, `done`, `failed`, `dot`,
 `radius`, `font`), each falling back to the app's `--mumma-wn-*` What's New
