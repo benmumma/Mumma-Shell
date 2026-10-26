@@ -227,26 +227,49 @@ export function behaviorLine(
       + (next ? ` Next run ${next}.` : '');
   }
   if (b.answers === 'next_run') {
-    return `${name} acts on your answers at its next run and replies to messages within a minute.`
+    return `${name} acts on your answers at its next run and replies to messages within a few minutes.`
       + (next ? ` Next run ${next}.` : '');
   }
   if (b.schedule === 'scheduled') {
-    return `${name} acts on your answers and messages within a minute.`
+    return `${name} acts on your answers and messages within a few minutes.`
       + (next ? ` Next scheduled run ${next}.` : '');
   }
-  return `${name} runs when you answer or write, and acts within a minute.`;
+  return `${name} runs when you answer or write, and acts within a few minutes.`;
+}
+
+/** How long after your message the inbox keeps saying the agent is on it. */
+export const AWAIT_REPLY_MS = 15 * 60 * 1000;
+
+/**
+ * Is a reply on its way? Your message is the last word in the conversation,
+ * it is recent, and the agent is one that wakes for messages. The panel then
+ * says the agent is working on it and checks back until the reply lands.
+ */
+export function awaitingReply(
+  page: Pick<InboxPage, 'messages' | 'behavior'>,
+  now: Date = new Date(),
+): boolean {
+  const b = page.behavior;
+  if (!b || b.paused || b.messages !== 'soon') return false;
+  const last = page.messages[page.messages.length - 1];
+  if (!last || last.author_type !== 'member') return false;
+  const age = now.getTime() - Date.parse(last.created_at);
+  return age >= -60 * 1000 && age < AWAIT_REPLY_MS;
 }
 
 /** Under the message box: when this agent will read what you write. */
 export function composerHint(
-  page: Pick<InboxPage, 'name' | 'next_run_at' | 'behavior'>,
+  page: Pick<InboxPage, 'name' | 'next_run_at' | 'behavior'> & Partial<Pick<InboxPage, 'messages'>>,
   now: Date = new Date(),
   locale?: string,
 ): string | null {
   const b = page.behavior;
   if (!b) return null;
   if (b.paused) return `${page.name} is paused and won't read this until it's switched back on.`;
-  if (b.messages === 'soon') return `${page.name} usually replies within a minute.`;
+  if (page.messages && awaitingReply({ messages: page.messages, behavior: b }, now)) {
+    return `${page.name} has your message and is working on it.`;
+  }
+  if (b.messages === 'soon') return `${page.name} usually replies within a few minutes.`;
   const next = whenLabel(page.next_run_at ?? null, now, locale);
   return next ? `${page.name} reads this on its next run, ${next}.` : `${page.name} reads this on its next run.`;
 }

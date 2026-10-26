@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createAgentInboxApi, type AgentInboxApi, type AgentInboxApiOptions, type InboxRef } from './api';
-import { totalBadge } from './logic';
+import { awaitingReply, totalBadge } from './logic';
 import type { InboxHistoryKind, InboxItem, InboxNotes, InboxPage, InboxSummary } from './types';
 
 /** How often an open app re-reads its inbox list (also on focus). */
 export const INBOX_POLL_MS = 60 * 1000;
+/** How often an open inbox checks for a reply it is waiting on. */
+export const AWAIT_POLL_MS = 15 * 1000;
 
 /**
  * A stable inbox client for the life of the component. `getToken` may change
@@ -153,6 +155,15 @@ export function useAgentInbox(
     if (key) void refresh();
   }, [key, refresh]);
   useOnFocus(() => { void refresh(); }, Boolean(key));
+
+  // While a reply is on its way (awaitingReply), check back every 15 s so it
+  // shows up without reopening the inbox.
+  const waiting = page ? awaitingReply(page) : false;
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const t = setInterval(() => { void refresh(); }, AWAIT_POLL_MS);
+    return () => clearInterval(t);
+  }, [waiting, refresh]);
 
   const withBusy = useCallback(async (id: string, fn: () => Promise<boolean>) => {
     setBusy(prev => new Set(prev).add(id));

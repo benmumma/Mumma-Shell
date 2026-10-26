@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { UseAgentInboxResult } from './hooks';
 import {
-  agoLabel, answerLine, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
+  agoLabel, answerLine, awaitingReply, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
   historyDays, historyStatus, kindLabel, progressFraction, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
@@ -531,6 +531,21 @@ function HistoryView({ inbox, s, c, now, locale, kind, onKind }: {
 
 // ── Chat and memory ──────────────────────────────────────────────────────────
 
+/** Three dots that pulse in turn: the agent is working. Still under reduced motion. */
+function WorkingDots({ color }: { color: string }) {
+  const dot = (i: number): CSSProperties => ({
+    width: '0.375rem', height: '0.375rem', borderRadius: '999px', background: color,
+    animation: `mumma-ai-pulse 1.2s ${i * 0.2}s infinite ease-in-out`,
+  });
+  return (
+    <span aria-hidden="true" style={{ display: 'inline-flex', gap: '0.1875rem' }}>
+      <style>{'@keyframes mumma-ai-pulse{0%,80%,100%{opacity:.25}40%{opacity:1}}'
+        + '@media (prefers-reduced-motion: reduce){[data-mumma-ai-working] span{animation:none!important}}'}</style>
+      <span style={dot(0)} /><span style={dot(1)} /><span style={dot(2)} />
+    </span>
+  );
+}
+
 /**
  * A message box that grows with what you write, like a chat app's: one line
  * empty, up to about eight lines, then it scrolls. Enter sends (it submits
@@ -568,7 +583,9 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
 }) {
   const [draft, setDraft] = useState('');
   const busy = inbox.busy.has('__composer');
-  const hint = inbox.page ? composerHint(inbox.page, new Date(), locale) : null;
+  const waiting = inbox.page ? awaitingReply(inbox.page) : false;
+  // The working bubble already says it; the line under the box would repeat it.
+  const hint = inbox.page && !waiting ? composerHint(inbox.page, new Date(), locale) : null;
   const send = async (text: string) => {
     if (await inbox.send(text)) setDraft('');
   };
@@ -595,6 +612,18 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
           </div>
         );
       })}
+      {waiting && (
+        <div role="status" data-mumma-ai-working="" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', margin: '0 0 0.625rem' }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: AI_RADIUS,
+            borderBottomLeftRadius: '0.25rem', background: c.surface, border: `1px solid ${c.border}`, color: c.muted,
+          }}>
+            <WorkingDots color={c.accent} />
+            <span>{name} is working on it</span>
+          </div>
+          <div style={{ ...s.meta, fontSize: '0.75rem', marginTop: '0.125rem' }}>Replies usually take a few minutes</div>
+        </div>
+      )}
       {prompts.length > 0 && (
         <div style={s.row}>
           {prompts.map(p => <button key={p} type="button" style={s.quiet} disabled={busy} onClick={() => { void send(p); }}>{p}</button>)}
