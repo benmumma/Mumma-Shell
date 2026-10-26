@@ -18,6 +18,6 @@ export { AgentInboxDock, DOCK_BREAKPOINT_PX, DOCK_WIDTH, type AgentInboxDockProp
 export { aiVar, colorsFrom, useInboxColors, type InboxColors } from './theme';
 export type {
   InboxItem, InboxItemKind, InboxBlock, InboxLink, InboxOption, InboxAnswer, InboxMessage, InboxProfile,
-  InboxSummary, InboxPage, InboxNote, InboxNotes, InboxResult, FollowThrough, InboxHistoryPage, InboxHistoryKind,
+  InboxSummary, InboxPage, InboxTopic, InboxNote, InboxNotes, InboxResult, FollowThrough, InboxHistoryPage, InboxHistoryKind,
   InboxBehavior,
 } from './types';

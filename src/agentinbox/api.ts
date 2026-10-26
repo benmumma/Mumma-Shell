@@ -1,5 +1,5 @@
 import type {
-  InboxHistoryKind, InboxHistoryPage, InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary,
+  InboxHistoryKind, InboxHistoryPage, InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary, InboxTopic,
 } from './types';
 
 export interface AgentInboxApiOptions {
@@ -31,6 +31,11 @@ export interface AgentInboxApi {
   forgetNote(ref: InboxRef, noteId: string): Promise<InboxResult<{ forgotten: boolean }>>;
   /** "Act on it now": one run with the answers still waiting (Mumapps-Server 2026-10-27+). */
   wake?(ref: InboxRef): Promise<InboxResult<{ acts_at: string }>>;
+  /** Conversation topics (Mumapps-Server inbox m2). Null on any failure or an older server. */
+  listTopics?(ref: InboxRef, opts?: { before?: string | null }): Promise<{ topics: InboxTopic[]; next_before: string | null } | null>;
+  getTopic?(ref: InboxRef, topicId: string): Promise<{ topic: InboxTopic; messages: InboxMessage[] } | null>;
+  startTopic?(ref: InboxRef): Promise<InboxResult<{ topic: InboxTopic }>>;
+  reopenTopic?(ref: InboxRef, topicId: string): Promise<InboxResult<{ topic: InboxTopic }>>;
 }
 
 export interface InboxRef {
@@ -134,5 +139,16 @@ export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchI
       const data = await read<InboxHistoryPage>(inboxPath(ref, `/history${qs ? `?${qs}` : ''}`));
       return data && Array.isArray(data.items) ? { items: data.items, next_before: data.next_before ?? null } : null;
     },
+    async listTopics(ref, { before = null } = {}) {
+      const data = await read<{ available?: boolean; topics?: InboxTopic[]; next_before?: string | null }>(
+        inboxPath(ref, `/topics${before ? `?before=${enc(before)}` : ''}`));
+      return data && data.available !== false && Array.isArray(data.topics) ? { topics: data.topics, next_before: data.next_before ?? null } : null;
+    },
+    async getTopic(ref, topicId) {
+      const data = await read<{ topic: InboxTopic; messages: InboxMessage[] }>(inboxPath(ref, `/topics/${enc(topicId)}`));
+      return data && Array.isArray(data.messages) ? data : null;
+    },
+    startTopic: (ref) => call('POST', inboxPath(ref, '/topics')),
+    reopenTopic: (ref, topicId) => call('POST', inboxPath(ref, `/topics/${enc(topicId)}/reopen`)),
   };
 }

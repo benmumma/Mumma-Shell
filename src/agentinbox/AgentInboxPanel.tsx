@@ -6,7 +6,7 @@ import {
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
 import { cardTypeInfo } from './cardTypes';
-import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage } from './types';
+import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage, InboxTopic } from './types';
 
 export interface AgentInboxPanelProps {
   /** `useAgentInbox`'s result for the inbox to show. */
@@ -693,15 +693,37 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
   messages: InboxMessage[]; inbox: UseAgentInboxResult; name: string; s: S; c: InboxColors; prompts: string[]; locale?: string;
 }) {
   const [draft, setDraft] = useState('');
+  const [view, setView] = useState<'chat' | 'topics' | { id: string }>('chat');
   const busy = inbox.busy.has('__composer');
+  const topic = inbox.hasTopics ? inbox.page?.topic ?? null : null;
   const waiting = inbox.page ? awaitingReply(inbox.page) : false;
   // The working bubble already says it; the line under the box would repeat it.
   const hint = inbox.page && !waiting ? composerHint(inbox.page, new Date(), locale) : null;
   const send = async (text: string) => {
     if (await inbox.send(text)) setDraft('');
   };
+  if (inbox.hasTopics && view === 'topics') {
+    return <TopicList inbox={inbox} name={name} s={s} c={c} locale={locale} onBack={() => setView('chat')} onOpen={id => setView({ id })} />;
+  }
+  if (inbox.hasTopics && typeof view === 'object') {
+    return <TopicReader inbox={inbox} topicId={view.id} name={name} s={s} c={c} locale={locale}
+      onBack={() => setView('topics')} onContinue={async () => { if (await inbox.reopenTopic(view.id)) setView('chat'); }} />;
+  }
   return (
     <section aria-label={`Talk to ${name}`}>
+      {topic && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem', paddingBottom: '0.5rem', borderBottom: `1px solid ${c.border}` }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <div style={s.eyebrow}>Topic</div>
+            <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {topic.title || (messages.length ? 'Untitled topic' : 'New topic')}
+            </div>
+          </div>
+          <button type="button" style={s.text} onClick={() => { setView('topics'); void inbox.loadTopics(); }}>Topics</button>
+          <button type="button" style={s.quiet} disabled={inbox.busy.has('__topic') || messages.length === 0}
+            onClick={() => { void inbox.newTopic(); }}>New topic</button>
+        </div>
+      )}
       {messages.length === 0 && (
         <p style={{ ...s.muted, margin: '0 0 0.75rem' }}>
           Tell {name} something it should know, or ask it a question. It replies here.
@@ -735,6 +757,11 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
           <div style={{ ...s.meta, fontSize: '0.75rem', marginTop: '0.125rem' }}>Replies usually take a few minutes</div>
         </div>
       )}
+      {topic?.stale && messages.length > 0 && !waiting && (
+        <p style={{ ...s.meta, textAlign: 'center', margin: '0 0 0.625rem' }} data-mumma-ai-topic-stale="">
+          It has been a while. Your next message starts a new topic.
+        </p>
+      )}
       {prompts.length > 0 && (
         <div style={s.row}>
           {prompts.map(p => <button key={p} type="button" style={s.quiet} disabled={busy} onClick={() => { void send(p); }}>{p}</button>)}
@@ -746,6 +773,93 @@ function Conversation({ messages, inbox, name, s, c, prompts, locale }: {
         <button type="submit" style={s.primary} disabled={busy || !draft.trim()}>Send</button>
       </form>
       {hint && <p style={{ ...s.meta, margin: '0.375rem 0 0' }} data-mumma-ai-composer-hint="">{hint}</p>}
+    </section>
+  );
+}
+
+function topicDates(t: InboxTopic, locale?: string): string {
+  const d = (iso: string) => new Date(iso).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  const a = d(t.opened_at);
+  const b = d(t.last_message_at);
+  return a === b ? a : `${a} – ${b}`;
+}
+
+/** Every topic, newest first: title, dates and the agent's summary. */
+function TopicList({ inbox, name, s, c, locale, onBack, onOpen }: {
+  inbox: UseAgentInboxResult; name: string; s: S; c: InboxColors; locale?: string; onBack: () => void; onOpen: (id: string) => void;
+}) {
+  const t = inbox.topics;
+  return (
+    <section aria-label="Topics">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem' }}>
+        <button type="button" style={s.text} onClick={onBack}>Back</button>
+        <h3 style={{ ...s.h, margin: 0 }}>Topics</h3>
+      </div>
+      <p style={{ ...s.muted, margin: '0 0 0.75rem' }}>
+        {name} reads the current topic in full and earlier ones as these summaries.
+      </p>
+      {(!t || (t.loading && !t.items.length)) && <p style={s.muted}>Loading…</p>}
+      {t && !t.loading && t.items.length === 0 && <p style={s.muted}>No topics yet.</p>}
+      {t?.items.map(x => (
+        <button key={x.id} type="button" onClick={() => onOpen(x.id)}
+          style={{ ...s.card, display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer', color: c.fg, font: 'inherit' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
+            <span style={{ fontWeight: 600, marginRight: 'auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {x.title || 'Untitled topic'}
+            </span>
+            {!x.closed_at && <span style={{ ...s.meta, color: c.accent, fontWeight: 600 }}>Current</span>}
+            <span style={s.meta}>{topicDates(x, locale)}</span>
+          </div>
+          {x.summary
+            ? <div style={{ ...s.body, ...s.muted, marginTop: '0.25rem' }}>{x.summary}</div>
+            : x.closed_at ? <div style={{ ...s.meta, marginTop: '0.25rem' }}>{name} sums this up on its next run.</div> : null}
+        </button>
+      ))}
+      {t?.nextBefore && (
+        <button type="button" style={s.text} disabled={t.loading} onClick={() => { void inbox.loadTopics({ more: true }); }}>Earlier topics</button>
+      )}
+    </section>
+  );
+}
+
+/** An earlier topic, read-only, with Continue this topic. */
+function TopicReader({ inbox, topicId, name, s, c, locale, onBack, onContinue }: {
+  inbox: UseAgentInboxResult; topicId: string; name: string; s: S; c: InboxColors; locale?: string;
+  onBack: () => void; onContinue: () => void;
+}) {
+  const [data, setData] = useState<{ topic: InboxTopic; messages: InboxMessage[] } | null | undefined>(undefined);
+  const { readTopic } = inbox;
+  useEffect(() => {
+    let live = true;
+    void readTopic(topicId).then(d => { if (live) setData(d); });
+    return () => { live = false; };
+  }, [readTopic, topicId]);
+  return (
+    <section aria-label={data?.topic.title || 'Topic'}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.75rem' }}>
+        <button type="button" style={s.text} onClick={onBack}>Topics</button>
+        <h3 style={{ ...s.h, margin: 0, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data?.topic.title || 'Untitled topic'}</h3>
+      </div>
+      {data === undefined && <p style={s.muted}>Loading…</p>}
+      {data === null && <p style={s.muted}>This topic could not be loaded.</p>}
+      {data?.topic.summary && <p style={{ ...s.card, ...s.body, margin: '0 0 0.75rem' }}>{data.topic.summary}</p>}
+      {data?.messages.map(m => {
+        const mine = m.author_type === 'member';
+        return (
+          <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', margin: '0 0 0.625rem' }}>
+            <div style={{
+              padding: '0.5rem 0.75rem', borderRadius: AI_RADIUS, maxWidth: '85%', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+              ...(mine ? { background: c.accent, color: c.accentFg } : { background: c.surface, border: `1px solid ${c.border}` }),
+            }}>{m.body}</div>
+            <div style={{ ...s.meta, fontSize: '0.75rem', marginTop: '0.125rem' }}>
+              {mine ? 'You' : name} · {new Date(m.created_at).toLocaleString(locale, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+            </div>
+          </div>
+        );
+      })}
+      {data && data.topic.closed_at && (
+        <button type="button" style={s.primary} disabled={inbox.busy.has('__topic')} onClick={onContinue}>Continue this topic</button>
+      )}
     </section>
   );
 }

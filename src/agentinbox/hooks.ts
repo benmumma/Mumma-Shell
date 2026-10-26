@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createAgentInboxApi, type AgentInboxApi, type AgentInboxApiOptions, type InboxRef } from './api';
 import { awaitingReply, totalBadge } from './logic';
-import type { InboxHistoryKind, InboxItem, InboxNotes, InboxPage, InboxSummary } from './types';
+import type { InboxHistoryKind, InboxItem, InboxMessage, InboxNotes, InboxPage, InboxSummary, InboxTopic } from './types';
 
 /** How often an open app re-reads its inbox list (also on focus). */
 export const INBOX_POLL_MS = 60 * 1000;
@@ -100,6 +100,17 @@ export interface UseAgentInboxResult {
   history: InboxHistoryState | null;
   /** Load the first page for `kind` (null: everything), or the next page with `more`. */
   loadHistory: (kind?: InboxHistoryKind | null, opts?: { more?: boolean }) => Promise<void>;
+  /** True when the server splits the conversation into topics. */
+  hasTopics: boolean;
+  /** Close the current topic; the next message starts a new one. */
+  newTopic: () => Promise<boolean>;
+  /** Make an earlier topic current again. */
+  reopenTopic: (topicId: string) => Promise<boolean>;
+  /** The Topics list: null until loaded. */
+  topics: { items: InboxTopic[]; nextBefore: string | null; loading: boolean } | null;
+  loadTopics: (opts?: { more?: boolean }) => Promise<void>;
+  /** One earlier topic's messages, for reading. */
+  readTopic: (topicId: string) => Promise<{ topic: InboxTopic; messages: InboxMessage[] } | null>;
 }
 
 export interface InboxHistoryState {
@@ -126,6 +137,9 @@ export function useAgentInbox(
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const [notes, setNotes] = useState<InboxNotes | null>(null);
   const [history, setHistory] = useState<InboxHistoryState | null>(null);
+  const [topics, setTopics] = useState<UseAgentInboxResult['topics']>(null);
+  const pageRef = useRef<InboxPage | null>(null);
+  pageRef.current = page;
   const historyRef = useRef<InboxHistoryState | null>(null);
   historyRef.current = history;
   const onChangeRef = useRef(onChange);
@@ -151,6 +165,7 @@ export function useAgentInbox(
     setPage(null);
     setNotes(null);
     setHistory(null);
+    setTopics(null);
     setActionError(null);
     if (key) void refresh();
   }, [key, refresh]);
@@ -231,9 +246,11 @@ export function useAgentInbox(
     if (!r || !text) return false;
     const res = await api.sendMessage(r, text, itemId);
     if (!res.ok) { setActionError(res.message); return false; }
+    // A message into a stale topic opened a new one on the server: re-read.
+    if (!itemId && pageRef.current?.topic?.stale) { await refresh(); return true; }
     setPage(p => p && (itemId ? p : { ...p, messages: [...p.messages, res.data.message] }));
     return true;
-  }), [api, withBusy]);
+  }), [api, refresh, withBusy]);
 
   const actNow = useCallback(() => withBusy('__wake', async () => {
     const r = refRef.current;
@@ -290,7 +307,51 @@ export function useAgentInbox(
     });
   }, [api]);
 
+  const newTopic = useCallback(() => withBusy('__topic', async () => {
+    const r = refRef.current;
+    if (!r || !api.startTopic) return false;
+    const res = await api.startTopic(r);
+    if (!res.ok) { setActionError(res.message); return false; }
+    setTopics(null);
+    await refresh();
+    return true;
+  }), [api, refresh, withBusy]);
+
+  const reopenTopic = useCallback((topicId: string) => withBusy('__topic', async () => {
+    const r = refRef.current;
+    if (!r || !api.reopenTopic) return false;
+    const res = await api.reopenTopic(r, topicId);
+    if (!res.ok) { setActionError(res.message); return false; }
+    setTopics(null);
+    await refresh();
+    return true;
+  }), [api, refresh, withBusy]);
+
+  const topicsRef = useRef(topics);
+  topicsRef.current = topics;
+  const loadTopics = useCallback<UseAgentInboxResult['loadTopics']>(async ({ more = false } = {}) => {
+    const r = refRef.current;
+    if (!r || !api.listTopics) return;
+    const prev = topicsRef.current;
+    const before = more && prev ? prev.nextBefore : null;
+    setTopics({ items: more && prev ? prev.items : [], nextBefore: before, loading: true });
+    const res = await api.listTopics(r, { before });
+    setTopics(t => ({
+      items: [...(more && t ? t.items : []), ...(res ? res.topics : [])],
+      nextBefore: res ? res.next_before : null,
+      loading: false,
+    }));
+  }, [api]);
+
+  const readTopic = useCallback(async (topicId: string) => {
+    const r = refRef.current;
+    if (!r || !api.getTopic) return null;
+    return api.getTopic(r, topicId);
+  }, [api]);
+
   return {
+    hasTopics: Boolean(page && page.topic && api.startTopic),
+    newTopic, reopenTopic, topics, loadTopics, readTopic,
     page, loading, error, actionError, busy, refresh,
     answer, undo, dismiss, snooze, send, actNow, markAllSeen, notes, loadNotes, forgetNote,
     history, loadHistory,

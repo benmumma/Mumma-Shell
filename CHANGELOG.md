@@ -4,7 +4,7 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
-## 0.12.0 — visual Now cards
+## 0.12.0 — visual Now cards, and conversation topics
 
 - **Card catalog.** `CARD_TYPES` lists the six card layouts (Week, Next up,
   Progress, Numbers, Checklist, Note), mirroring Mumapps-Server's catalog,
@@ -18,6 +18,14 @@ https://github.com/benmumma/Mumma-Shell/releases.
   `change` and shrink long values to fit.
 - A typed card (anything but Note) leads with its picture, and its body is a
   caption under it.
+- **Topics.** On a server with inbox topics (Mumapps-Server inbox m2), the
+  conversation shows its current topic's title with **Topics** and **New
+  topic**. Topics lists every topic with the agent's summary; an earlier one
+  reads back and **Continue this topic** makes it current again. A topic
+  quiet for 12 hours says the next message starts a new one. The API client
+  gains `listTopics`, `getTopic`, `startTopic`, `reopenTopic`; the hook gains
+  `hasTopics`, `newTopic`, `reopenTopic`, `topics`, `loadTopics`,
+  `readTopic`. Against an older server nothing changes.
 
 ## 0.11.1 — a chat box that grows, and "working on it"
 
