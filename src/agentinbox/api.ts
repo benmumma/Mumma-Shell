@@ -36,6 +36,8 @@ export interface AgentInboxApi {
   getTopic?(ref: InboxRef, topicId: string): Promise<{ topic: InboxTopic; messages: InboxMessage[] } | null>;
   startTopic?(ref: InboxRef): Promise<InboxResult<{ topic: InboxTopic }>>;
   reopenTopic?(ref: InboxRef, topicId: string): Promise<InboxResult<{ topic: InboxTopic }>>;
+  /** Undo what the agent added to your profile, from its update. */
+  undoProfileChange?(ref: InboxRef, itemId: string): Promise<InboxResult<{ item: InboxItem; reverted: string[] }>>;
 }
 
 export interface InboxRef {
@@ -150,5 +152,6 @@ export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchI
     },
     startTopic: (ref) => call('POST', inboxPath(ref, '/topics')),
     reopenTopic: (ref, topicId) => call('POST', inboxPath(ref, `/topics/${enc(topicId)}/reopen`)),
+    undoProfileChange: (ref, itemId) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/undo-profile`)),
   };
 }

@@ -4,7 +4,7 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
-## 0.12.0 — visual Now cards, and conversation topics
+## 0.12.0 — visual Now cards, conversation topics, and profile memory
 
 - **Card catalog.** `CARD_TYPES` lists the six card layouts (Week, Next up,
   Progress, Numbers, Checklist, Note), mirroring Mumapps-Server's catalog,
@@ -26,6 +26,12 @@ https://github.com/benmumma/Mumma-Shell/releases.
   gains `listTopics`, `getTopic`, `startTopic`, `reopenTopic`; the hook gains
   `hasTopics`, `newTopic`, `reopenTopic`, `topics`, `loadTopics`,
   `readTopic`. Against an older server nothing changes.
+- **Profile memory.** Memory shows "From your <domain> profile": the
+  lasting preferences every Claude reads, which the agent now writes to
+  directly (`InboxNotes.profile`, read-only here). Each such write arrives as
+  an update with **Undo** beside Clear; Undo puts the old values back. New
+  `undoProfileChange` (API), `undoProfile` (hook), `isProfileChange`,
+  `profileValue`.
 
 ## 0.11.1 — a chat box that grows, and "working on it"
 

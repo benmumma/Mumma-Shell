@@ -4,7 +4,7 @@ export {
 } from './api';
 export {
   badgeCount, totalBadge, hasNew, whenLabel, undoRemainingMs, answerLine, followThroughLine, blockText,
-  progressFraction, scheduleRows, classifyInboxLink, snoozeOptions, statusSummary, agoLabel, historyDays, kindLabel, historyStatus,
+  progressFraction, scheduleRows, isProfileChange, profileValue, classifyInboxLink, snoozeOptions, statusSummary, agoLabel, historyDays, kindLabel, historyStatus,
   behaviorLine, composerHint, canActNow, awaitingReply, AWAIT_REPLY_MS,
 } from './logic';
 export {

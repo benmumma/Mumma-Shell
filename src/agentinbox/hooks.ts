@@ -109,6 +109,8 @@ export interface UseAgentInboxResult {
   /** The Topics list: null until loaded. */
   topics: { items: InboxTopic[]; nextBefore: string | null; loading: boolean } | null;
   loadTopics: (opts?: { more?: boolean }) => Promise<void>;
+  /** Undo a profile change the agent made, from the update that reported it. */
+  undoProfile: (item: InboxItem) => Promise<boolean>;
   /** One earlier topic's messages, for reading. */
   readTopic: (topicId: string) => Promise<{ topic: InboxTopic; messages: InboxMessage[] } | null>;
 }
@@ -236,6 +238,9 @@ export function useAgentInbox(
     }), [settle, withBusy]);
 
   const undo = useMemo(() => simple((r, item) => api.undo(r, item.id)), [api, simple]);
+  const undoProfile = useMemo(() => simple((r, item) => (api.undoProfileChange
+    ? api.undoProfileChange(r, item.id)
+    : Promise.resolve({ ok: false, message: 'Undo needs a newer server.' }))), [api, simple]);
   const dismiss = useMemo(() => simple((r, item) => api.dismiss(r, item.id)), [api, simple]);
   const snooze = useCallback((item: InboxItem, until: string) =>
     simple((r, it) => api.snooze(r, it.id, until))(item), [api, simple]);
@@ -351,7 +356,7 @@ export function useAgentInbox(
 
   return {
     hasTopics: Boolean(page && page.topic && api.startTopic),
-    newTopic, reopenTopic, topics, loadTopics, readTopic,
+    newTopic, reopenTopic, topics, loadTopics, readTopic, undoProfile,
     page, loading, error, actionError, busy, refresh,
     answer, undo, dismiss, snooze, send, actNow, markAllSeen, notes, loadNotes, forgetNote,
     history, loadHistory,

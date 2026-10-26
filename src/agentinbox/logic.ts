@@ -123,6 +123,19 @@ export function scheduleRows(b: InboxBlock, now: Date = new Date(), locale?: str
   });
 }
 
+/** An update reporting a profile change the person can still undo. */
+export function isProfileChange(item: { kind: string; about_key?: string | null }): boolean {
+  return item.kind === 'update' && typeof item.about_key === 'string' && item.about_key.startsWith('profile.');
+}
+
+/** A profile field as one line: arrays joined, objects as compact JSON. */
+export function profileValue(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v) && v.every(x => typeof x !== 'object')) return v.join(', ');
+  return JSON.stringify(v);
+}
+
 /** A progress block's fraction, clamped 0..1, or null when it is not one. */
 export function progressFraction(b: InboxBlock): number | null {
   if (b.type !== 'progress') return null;

@@ -180,6 +180,11 @@ export interface InboxNotes {
   notes: InboxNote[];
   used_chars: number;
   max_chars: number;
+  /**
+   * The recipient's context profile in the agent's domain, shown beside its
+   * notes (Mumapps-Server 2026-10-26+; null for anyone else or no domain).
+   */
+  profile?: { domain: string; label: string; exists: boolean; fields: Record<string, unknown>; updated_at: string | null } | null;
 }
 
 /** A write's outcome. Writes never throw either. */

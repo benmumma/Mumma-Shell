@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { UseAgentInboxResult } from './hooks';
 import {
   agoLabel, answerLine, awaitingReply, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
-  historyDays, historyStatus, kindLabel, progressFraction, scheduleRows, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
+  historyDays, historyStatus, isProfileChange, kindLabel, profileValue, progressFraction, scheduleRows, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
 import { cardTypeInfo } from './cardTypes';
@@ -525,6 +525,10 @@ function NowView({ inbox, s, c, now, locale, onNavigate, onSeeHistory }: {
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
                   {u.unseen && <span style={{ ...s.dot, background: c.accent, alignSelf: 'center' }} aria-label="New" />}
                   <span style={{ ...s.meta, marginRight: 'auto' }}>{agoLabel(u.created_at, new Date(now), locale)}</span>
+                  {isProfileChange(u) && (
+                    <button type="button" style={{ ...s.text, minHeight: 0, padding: '0.125rem 0.25rem' }} aria-label="Undo this profile change"
+                      disabled={inbox.busy.has(u.id)} onClick={() => { void inbox.undoProfile(u); }}>Undo</button>
+                  )}
                   <button type="button" style={{ ...s.text, minHeight: 0, padding: '0.125rem 0.25rem' }} aria-label="Clear this update"
                     disabled={inbox.busy.has(u.id)} onClick={() => { void inbox.dismiss(u); }}>Clear</button>
                 </div>
@@ -893,6 +897,22 @@ function Memory({ inbox, name, s, c }: { inbox: UseAgentInboxResult; name: strin
           </div>
           {notes.used_chars.toLocaleString()} of {notes.max_chars.toLocaleString()} characters
         </div>
+      )}
+      {notes?.profile && (
+        <section aria-label={`Your ${notes.profile.label} profile`} style={{ marginTop: '1rem' }}>
+          <div style={s.eyebrow}>From your {notes.profile.label} profile</div>
+          <p style={{ ...s.muted, margin: '0.25rem 0 0.5rem' }}>
+            Lasting preferences every Claude reads. {name} adds to it with an update you can undo.
+          </p>
+          {(!notes.profile.exists || Object.keys(notes.profile.fields).length === 0)
+            ? <p style={s.muted}>Nothing saved yet.</p>
+            : Object.entries(notes.profile.fields).map(([k, v]) => (
+              <div key={k} style={s.card}>
+                <div style={s.eyebrow}>{k.replace(/[_-]/g, ' ')}</div>
+                <div style={s.body}>{profileValue(v)}</div>
+              </div>
+            ))}
+        </section>
       )}
     </section>
   );
