@@ -4,6 +4,21 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.12.0 — visual Now cards
+
+- **Card catalog.** `CARD_TYPES` lists the six card layouts (Week, Next up,
+  Progress, Numbers, Checklist, Note), mirroring Mumapps-Server's catalog,
+  and `CardTypePreview` draws a layout's sample small for a settings
+  gallery. `InboxProfile.cards[]` gains an optional `type`.
+- **Week cards draw as a week.** Schedule blocks now render the server's
+  shape (`rows: [{ date, label, status }]`): a weekday and date per row, today
+  marked, and a chip for done, moved, skipped or missed. Before this they fell
+  back to plain text. New `scheduleRows`.
+- Checklists show a ring per item and "n of m done". Stat tiles show their
+  `change` and shrink long values to fit.
+- A typed card (anything but Note) leads with its picture, and its body is a
+  caption under it.
+
 ## 0.11.1 — a chat box that grows, and "working on it"
 
 - The message box (and "Answer in your own words") is a textarea that grows

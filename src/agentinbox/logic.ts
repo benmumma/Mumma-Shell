@@ -101,6 +101,28 @@ export function blockText(b: InboxBlock): string {
   return label;
 }
 
+export interface ScheduleRow { date: string; weekday: string; day: number | null; label: string; status: string | null; today: boolean }
+
+/**
+ * A schedule block's rows (server shape: `rows: [{ date: "YYYY-MM-DD", label, status? }]`),
+ * with the short weekday and day of month in local time and today flagged.
+ */
+export function scheduleRows(b: InboxBlock, now: Date = new Date(), locale?: string): ScheduleRow[] {
+  const rows = Array.isArray(b.rows) ? (b.rows as { date?: unknown; label?: unknown; status?: unknown }[]) : [];
+  return rows.filter(r => r && typeof r.label === 'string').map(r => {
+    const m = typeof r.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(r.date) : null;
+    const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+    return {
+      date: typeof r.date === 'string' ? r.date : '',
+      weekday: d ? d.toLocaleDateString(locale, { weekday: 'short' }) : '',
+      day: d ? d.getDate() : null,
+      label: r.label as string,
+      status: typeof r.status === 'string' ? r.status : null,
+      today: d ? sameDay(d, now) : false,
+    };
+  });
+}
+
 /** A progress block's fraction, clamped 0..1, or null when it is not one. */
 export function progressFraction(b: InboxBlock): number | null {
   if (b.type !== 'progress') return null;

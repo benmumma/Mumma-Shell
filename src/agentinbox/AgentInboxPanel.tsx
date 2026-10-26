@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import type { UseAgentInboxResult } from './hooks';
 import {
   agoLabel, answerLine, awaitingReply, behaviorLine, blockText, canActNow, classifyInboxLink, composerHint, followThroughLine,
-  historyDays, historyStatus, kindLabel, progressFraction, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
+  historyDays, historyStatus, kindLabel, progressFraction, scheduleRows, snoozeOptions, statusSummary, undoRemainingMs, whenLabel,
 } from './logic';
 import { useInboxColors, AI_RADIUS, TOUCH, type InboxColors } from './theme';
+import { cardTypeInfo } from './cardTypes';
 import type { InboxBlock, InboxHistoryKind, InboxItem, InboxLink, InboxMessage } from './types';
 
 export interface AgentInboxPanelProps {
@@ -122,7 +123,7 @@ function LinkList({ links, onNavigate, s }: { links: InboxLink[]; onNavigate?: (
   );
 }
 
-function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxColors; onNavigate?: (p: string) => void; s: S }) {
+function Blocks({ blocks, c, onNavigate, s, now }: { blocks: InboxBlock[]; c: InboxColors; onNavigate?: (p: string) => void; s: S; now?: Date }) {
   if (!blocks.length) return null;
   const stats = blocks.filter(b => b.type === 'stat');
   return (
@@ -131,10 +132,13 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(5.5rem, 1fr))', gap: '0.5rem', margin: '0 0 0.625rem' }}>
           {stats.map((b, i) => (
             <div key={`s${i}`} style={{ padding: '0.5rem 0.625rem', borderRadius: AI_RADIUS, background: c.bg, border: `1px solid ${c.border}` }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, lineHeight: 1.2 }}>
+              <div style={{ fontSize: String(b.value ?? '').length > 5 ? '1rem' : '1.125rem', fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
                 {String(b.value ?? '')}{b.unit ? <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}> {String(b.unit)}</span> : null}
               </div>
               <div style={s.meta}>{String(b.label ?? '')}</div>
+              {typeof b.change === 'string' && b.change ? (
+                <div style={{ ...s.meta, color: c.fg, fontWeight: 600 }}>{b.change}</div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -155,6 +159,12 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
               </div>
             </div>
           );
+        }
+        if (b.type === 'schedule' && Array.isArray(b.rows)) {
+          return <ScheduleBlock key={i} block={b} c={c} s={s} now={now} />;
+        }
+        if (b.type === 'checklist' && Array.isArray(b.items)) {
+          return <ChecklistBlock key={i} block={b} c={c} s={s} />;
         }
         if ((b.type === 'checklist' || b.type === 'schedule') && Array.isArray(b.items)) {
           return (
@@ -181,6 +191,97 @@ function Blocks({ blocks, c, onNavigate, s }: { blocks: InboxBlock[]; c: InboxCo
     </div>
   );
 }
+
+/**
+ * A card layout's sample, drawn small: the tile preview in a settings card
+ * gallery. Decorative (aria-hidden); the tile names the layout in text.
+ */
+export function CardTypePreview({ type, scale = 0.62, height = '7.5rem' }: { type: string; scale?: number; height?: string }) {
+  const c = useInboxColors();
+  const s = styles(c);
+  const info = cardTypeInfo(type);
+  if (!info) return null;
+  return (
+    <div aria-hidden="true" style={{ height, overflow: 'hidden', pointerEvents: 'none', borderRadius: AI_RADIUS, background: c.surface }}>
+      <div style={{ width: `${100 / scale}%`, transform: `scale(${scale})`, transformOrigin: 'top left', padding: '0.75rem', boxSizing: 'border-box', color: c.fg }}>
+        <h4 style={{ ...s.title, margin: '0 0 0.25rem' }}>{info.sample.title}</h4>
+        {info.sample.body ? <p style={{ ...s.body, margin: 0 }}>{info.sample.body}</p> : null}
+        <Blocks blocks={info.sample.blocks} c={c} s={s} now={new Date(2026, 9, 29)} />
+      </div>
+    </div>
+  );
+}
+
+function isVisualCard(profile: { cards?: { key: string; type?: string }[] } | undefined, card: InboxItem): boolean {
+  const type = profile?.cards?.find(x => x.key === card.card_key)?.type;
+  return Boolean(type && type !== 'note' && card.blocks.length);
+}
+
+const STATUS_LABEL: Record<string, string> = { done: 'Done', moved: 'Moved', skipped: 'Skipped', missed: 'Missed' };
+
+/** A Week card's schedule: one row per day, today marked, a chip per status. */
+function ScheduleBlock({ block, c, s, now }: { block: InboxBlock; c: InboxColors; s: S; now?: Date }) {
+  const rows = scheduleRows(block, now);
+  return (
+    <div style={{ margin: '0 0 0.625rem' }}>
+      {typeof block.title === 'string' && block.title ? <div style={{ ...s.meta, fontWeight: 600, margin: '0 0 0.25rem' }}>{block.title}</div> : null}
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {rows.map((r, j) => {
+          const quiet = r.status === 'done' || r.status === 'skipped' || r.status === 'missed';
+          return (
+            <li key={j} aria-current={r.today ? 'date' : undefined} style={{
+              display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.4375rem 0.5rem',
+              borderTop: j ? `1px solid ${c.border}` : 'none',
+              ...(r.today ? { background: c.bg, borderRadius: AI_RADIUS, boxShadow: `inset 3px 0 0 ${c.accent}` } : {}),
+            }}>
+              <span style={{ flex: '0 0 2.75rem', textAlign: 'center', lineHeight: 1.1 }}>
+                <span style={{ display: 'block', ...s.meta, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{r.weekday}</span>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: '1.0625rem' }}>{r.day}</span>
+              </span>
+              <span style={{ flex: 1, minWidth: 0, ...(quiet ? { color: c.muted } : {}), ...(r.status === 'skipped' || r.status === 'missed' ? { textDecoration: 'line-through' } : {}) }}>
+                {r.label}
+              </span>
+              {r.status && STATUS_LABEL[r.status] ? (
+                <span style={{
+                  flex: 'none', fontSize: '0.75rem', fontWeight: 600, padding: '0.125rem 0.5rem', borderRadius: '999px',
+                  ...(r.status === 'done' ? { background: c.done, color: c.accentFg }
+                    : r.status === 'moved' ? { background: c.accent, color: c.accentFg }
+                      : { border: `1px solid ${c.border}`, color: c.muted }),
+                }}>{STATUS_LABEL[r.status]}</span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/** A checklist with a ring per item, filled when done. */
+function ChecklistBlock({ block, c, s }: { block: InboxBlock; c: InboxColors; s: S }) {
+  const items = (block.items as { label?: string; done?: boolean }[]).filter(it => it && it.label);
+  const done = items.filter(it => it.done).length;
+  return (
+    <div style={{ margin: '0 0 0.625rem' }}>
+      <div style={{ ...s.meta, margin: '0 0 0.25rem' }}>{done} of {items.length} done</div>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+        {items.map((it, j) => (
+          <li key={j} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.3125rem 0', ...(it.done ? { color: c.muted } : {}) }}>
+            <span aria-hidden="true" style={{
+              flex: 'none', width: '1.125rem', height: '1.125rem', borderRadius: '50%', display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', lineHeight: 1,
+              ...(it.done ? { background: c.done, color: c.accentFg } : { border: `2px solid ${c.border}` }),
+            }}>{it.done ? '\u2713' : ''}</span>
+            <span style={it.done ? { textDecoration: 'line-through' } : undefined}>{it.label}</span>
+            <span style={visuallyHidden}>{it.done ? ' (done)' : ''}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const visuallyHidden: CSSProperties = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
 
 /** Body text that folds to three lines once it is long, with More / Less. */
 function Folding({ text, s, threshold = 220 }: { text: string; s: S; threshold?: number }) {
@@ -398,8 +499,18 @@ function NowView({ inbox, s, c, now, locale, onNavigate, onSeeHistory }: {
                 <h4 style={{ ...s.title, marginRight: 'auto' }}>{card.title}</h4>
                 <span style={s.meta}>{agoLabel(card.updated_at, new Date(now), locale)}</span>
               </div>
-              {card.body && <Folding text={card.body} s={s} threshold={400} />}
-              <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+              {/* A typed card leads with its picture; its body is a caption under it. */}
+              {isVisualCard(page.profile, card) ? (
+                <>
+                  <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+                  {card.body && <p style={{ ...s.body, ...s.muted, margin: '0 0 0.25rem' }}>{card.body}</p>}
+                </>
+              ) : (
+                <>
+                  {card.body && <Folding text={card.body} s={s} threshold={400} />}
+                  <Blocks blocks={card.blocks} c={c} onNavigate={onNavigate} s={s} />
+                </>
+              )}
               <LinkList links={card.links} onNavigate={onNavigate} s={s} />
             </article>
           ))}

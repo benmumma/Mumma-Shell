@@ -80,7 +80,8 @@ export interface InboxMessage {
 
 export interface InboxProfile {
   home_apps: string[];
-  cards: { key: string; label: string }[];
+  /** `type` is a card-catalog layout (cardTypes.ts); absent on a free-form card. */
+  cards: { key: string; label: string; type?: string }[];
   composer: { enabled: boolean; quick_prompts: string[] };
   notify: { push: 'asks' | 'all' | 'none'; badge: 'asks' | 'unread' };
   answers: { wake: 'immediate' | 'next_run' };
