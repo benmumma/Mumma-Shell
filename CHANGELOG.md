@@ -4,6 +4,16 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.14.0 — an app can draw the inbox tabs itself
+
+- **`AgentInboxPanel` takes `view`, `onViewChange` and `hideTabs`.** An app
+  that puts Now, History, Chat and Memory in its own header (Dekko's channels)
+  passes the open view and hides the panel's tab strip; the panel follows it
+  and reports its own moves (a "see all" link into History) through
+  `onViewChange`. Without them the panel keeps its own tabs, as before. New
+  type export `AgentInboxView`.
+- Ships with 0.13.0's resizable sidebar, which was not released on its own.
+
 ## 0.13.0 — a sidebar you can resize
 
 - **Drag the sidebar's left edge to resize it.** `AgentInboxDock` gains a

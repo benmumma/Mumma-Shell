@@ -17,9 +17,20 @@ export interface AgentInboxPanelProps {
   locale?: string;
   /** Hide the conversation (an app that shows it elsewhere). */
   hideConversation?: boolean;
+  /**
+   * The open view, for an app that draws the tabs itself (Dekko's channel
+   * header). With it the panel follows `view` and reports History links
+   * through `onViewChange`; without it the panel keeps its own.
+   */
+  view?: AgentInboxView;
+  /** Called when the panel moves itself to another view (a "see all" link). */
+  onViewChange?: (view: AgentInboxView) => void;
+  /** Leave out the panel's own tab strip (the app shows `view` as its tabs). */
+  hideTabs?: boolean;
 }
 
-type View = 'now' | 'history' | 'chat' | 'memory';
+export type AgentInboxView = 'now' | 'history' | 'chat' | 'memory';
+type View = AgentInboxView;
 type S = Record<string, CSSProperties>;
 
 function useNow(intervalMs: number, active: boolean): number {
@@ -928,11 +939,13 @@ function Memory({ inbox, name, s, c }: { inbox: UseAgentInboxResult; name: strin
  * filterable, paged), Chat, and Memory. No stylesheet: colors are
  * `--mumma-ai-*` properties.
  */
-export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation }: AgentInboxPanelProps) {
+export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation, view: viewProp, onViewChange, hideTabs }: AgentInboxPanelProps) {
   const c = useInboxColors();
   const s = styles(c);
   const { page } = inbox;
-  const [view, setView] = useState<View>('now');
+  const [ownView, setOwnView] = useState<View>('now');
+  const view = viewProp ?? ownView;
+  const setView = (v: View) => { setOwnView(v); onViewChange?.(v); };
   const [historyKind, setHistoryKind] = useState<InboxHistoryKind | null>(null);
   const ticking = Boolean(page?.answered.some(a => a.undo_until && undoRemainingMs(a) > 0));
   const now = useNow(ticking ? 1000 : 30000, Boolean(page));
@@ -964,7 +977,7 @@ export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation }:
     <div style={{ color: c.fg, fontSize: '0.9375rem', lineHeight: 1.5 }} data-mumma-agent-inbox="">
       <BehaviorLine page={page} s={s} c={c} now={now} locale={locale} />
       <StatusBanner page={page} s={s} c={c} now={now} locale={locale} />
-      <div role="tablist" aria-label={`${name} inbox`} style={{
+      {!hideTabs && <div role="tablist" aria-label={`${name} inbox`} style={{
         display: 'flex', gap: '0.25rem', padding: '0.25rem', margin: '0 0 1rem',
         background: c.surface, border: `1px solid ${c.border}`, borderRadius: '999px',
       }}>
@@ -986,9 +999,9 @@ export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation }:
             </button>
           );
         })}
-      </div>
+      </div>}
       {inbox.actionError && <p role="alert" style={s.error}>{inbox.actionError}</p>}
-      <div role="tabpanel" aria-label={views.find(v => v.id === view)?.label}>
+      <div role={hideTabs ? undefined : 'tabpanel'} aria-label={views.find(v => v.id === view)?.label}>
         {view === 'now' && <NowView inbox={inbox} s={s} c={c} now={now} locale={locale} onNavigate={onNavigate} onSeeHistory={seeHistory} />}
         {view === 'history' && <HistoryView inbox={inbox} s={s} c={c} now={now} locale={locale} kind={historyKind} onKind={setHistoryKind} />}
         {view === 'chat' && chat && (

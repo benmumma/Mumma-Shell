@@ -11,7 +11,7 @@ export {
   useAgentInboxApi, useAgentInboxes, useAgentInbox, INBOX_POLL_MS, AWAIT_POLL_MS,
   type UseAgentInboxesResult, type UseAgentInboxResult, type InboxHistoryState,
 } from './hooks';
-export { AgentInboxPanel, CardTypePreview, type AgentInboxPanelProps } from './AgentInboxPanel';
+export { AgentInboxPanel, CardTypePreview, type AgentInboxPanelProps, type AgentInboxView } from './AgentInboxPanel';
 export { CARD_TYPES, cardTypeInfo, type CardType, type CardTypeInfo } from './cardTypes';
 export { AgentInboxButton, type AgentInboxButtonProps, type AgentInboxTriggerProps } from './AgentInboxButton';
 export { AgentInboxDock, DOCK_BREAKPOINT_PX, DOCK_WIDTH, DOCK_MIN_PX, DOCK_MAX_PX, clampDockWidth, type AgentInboxDockProps } from './AgentInboxDock';
