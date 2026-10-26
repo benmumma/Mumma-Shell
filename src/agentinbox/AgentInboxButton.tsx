@@ -42,7 +42,7 @@ export interface AgentInboxButtonProps {
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 let drawerSeq = 0;
 
-function InboxIcon() {
+export function InboxIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -58,7 +58,7 @@ const iconButton: CSSProperties = {
   color: 'inherit', cursor: 'pointer', fontSize: '1.15rem', lineHeight: 1, borderRadius: '0.35rem',
 };
 
-const countStyle: CSSProperties = {
+export const countStyle: CSSProperties = {
   position: 'absolute', top: '-0.1rem', right: '-0.2rem', minWidth: '1rem', padding: '0 0.25rem',
   boxSizing: 'border-box', borderRadius: '999px', fontSize: '0.625rem', lineHeight: '1rem', fontWeight: 700,
   textAlign: 'center', pointerEvents: 'none',
@@ -70,7 +70,7 @@ const countStyle: CSSProperties = {
  * scroll locked, focus returned on close. Full width on a phone. A fixed
  * overlay without a portal (no react-dom dependency), like What's New.
  */
-function InboxDrawer({ title, onClose, fallbackFocus, header, children }: {
+export function InboxDrawer({ title, onClose, fallbackFocus, header, children }: {
   title: string; onClose: () => void; fallbackFocus?: RefObject<HTMLElement | null>; header?: ReactNode; children: ReactNode;
 }) {
   const c = useInboxColors();
@@ -137,8 +137,35 @@ function InboxDrawer({ title, onClose, fallbackFocus, header, children }: {
   );
 }
 
+/** One pill per agent when more than one inbox is shown; nothing for one. */
+export function InboxTabs({ inboxes, current, onSelect }: {
+  inboxes: InboxSummary[]; current: InboxSummary | null; onSelect: (instanceId: string) => void;
+}) {
+  const c = useInboxColors();
+  if (inboxes.length < 2) return null;
+  return (
+    <div role="tablist" aria-label="Agents" style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', padding: '0.5rem 0.75rem', borderBottom: `1px solid ${c.border}`, flex: 'none' }}>
+      {inboxes.map(s => {
+        const on = current?.instance_id === s.instance_id;
+        const n = badgeCount(s);
+        return (
+          <button key={s.instance_id} role="tab" type="button" aria-selected={on}
+            onClick={() => onSelect(s.instance_id)}
+            style={{
+              ...TOUCH, padding: '0.375rem 0.75rem', font: 'inherit', fontWeight: on ? 700 : 500, cursor: 'pointer',
+              whiteSpace: 'nowrap', color: c.fg, background: on ? c.surface : 'transparent',
+              border: `1px solid ${on ? c.border : 'transparent'}`, borderRadius: '999px',
+            }}>
+            {s.name}{n > 0 ? ` · ${n}` : ''}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The drawer's body for one inbox; marks it seen once it has loaded. */
-function OpenInbox({ api, summary, onChange, onNavigate, locale }: {
+export function OpenInbox({ api, summary, onChange, onNavigate, locale }: {
   api: ReturnType<typeof useAgentInboxApi>; summary: InboxSummary; onChange: () => void;
   onNavigate?: (p: string) => void; locale?: string;
 }) {
@@ -162,7 +189,6 @@ export function AgentInboxButton({
 }: AgentInboxButtonProps) {
   const api = useAgentInboxApi({ baseUrl, getToken, memberId, fetchImpl });
   const { inboxes, refresh } = useAgentInboxes(api, app, { pollMs });
-  const c = useInboxColors();
   const shown = useMemo(
     () => (inboxes ?? []).filter(i => !instanceId || i.instance_id === instanceId),
     [inboxes, instanceId],
@@ -193,25 +219,7 @@ export function AgentInboxButton({
       </button>
     );
 
-  const tabs = shown.length > 1 ? (
-    <div role="tablist" aria-label="Agents" style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', padding: '0.5rem 0.75rem', borderBottom: `1px solid ${c.border}`, flex: 'none' }}>
-      {shown.map(s => {
-        const on = current?.instance_id === s.instance_id;
-        const n = badgeCount(s);
-        return (
-          <button key={s.instance_id} role="tab" type="button" aria-selected={on}
-            onClick={() => setSelected(s.instance_id)}
-            style={{
-              ...TOUCH, padding: '0.375rem 0.75rem', font: 'inherit', fontWeight: on ? 700 : 500, cursor: 'pointer',
-              whiteSpace: 'nowrap', color: c.fg, background: on ? c.surface : 'transparent',
-              border: `1px solid ${on ? c.border : 'transparent'}`, borderRadius: '999px',
-            }}>
-            {s.name}{n > 0 ? ` · ${n}` : ''}
-          </button>
-        );
-      })}
-    </div>
-  ) : null;
+  const tabs = <InboxTabs inboxes={shown} current={current} onSelect={setSelected} />;
 
   return (
     <>

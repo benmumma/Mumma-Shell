@@ -5,6 +5,7 @@ import type { AppAccessMap } from '../auth/types';
 import { MUMMA_APPS, MUMMA_LABS_ICON, type MummaApp } from './apps';
 import { WhatsNewButton } from '../whatsnew/WhatsNewButton';
 import { AgentInboxButton } from '../agentinbox/AgentInboxButton';
+import { AgentInboxDock } from '../agentinbox/AgentInboxDock';
 
 /** Opt-in "What's new" for the header — see `MummaHeaderProps.whatsNew`. */
 export interface MummaHeaderWhatsNew {
@@ -37,6 +38,14 @@ export interface MummaHeaderAgentInbox {
   label?: string;
   /** Routes in-app links inside an SPA. */
   onNavigate?: (path: string) => void;
+  /**
+   * Where the inboxes live. 'dock' (the default since 0.10.0): a sidebar on a
+   * wide screen that the member can shrink to a bottom-right bubble, and the
+   * bubble alone on a narrow one. 'header': the 0.9 header icon and drawer.
+   */
+  placement?: 'dock' | 'header';
+  /** Dock tuning: the sidebar breakpoint (px, default 1200) and whether it pads the page. */
+  dock?: { breakpoint?: number; reserveSpace?: boolean };
 }
 
 export interface MummaHeaderProps {
@@ -289,6 +298,19 @@ export function MummaHeader({
 
   return (
     <header ref={rootRef} style={{ ...styles.bar, position: 'relative' }}>
+      {agentInbox && showInbox && agentInbox.placement !== 'header' && (
+        <AgentInboxDock
+          baseUrl={agentInbox.baseUrl}
+          getToken={agentInbox.getToken ?? headerToken}
+          app={inboxApp ?? null}
+          instanceId={agentInbox.instanceId}
+          memberId={agentInbox.memberId}
+          label={agentInbox.label}
+          onNavigate={agentInbox.onNavigate}
+          breakpoint={agentInbox.dock?.breakpoint}
+          reserveSpace={agentInbox.dock?.reserveSpace}
+        />
+      )}
       <a href={homeDest} onClick={onHomeClick} style={styles.logoLink} aria-label="Home" title={`${appName} home`}>
         <AppIcon src={iconSrc} alt={`${appName} logo`} style={styles.logo} />
       </a>
@@ -308,10 +330,10 @@ export function MummaHeader({
       )}
       {children}
       <span style={styles.right}>
-        {(actions || (whatsNew && whatsNewApp) || showInbox) && (
+        {(actions || (whatsNew && whatsNewApp) || (showInbox && agentInbox?.placement === 'header')) && (
           <span style={styles.actions}>
             {actions}
-            {agentInbox && showInbox && (
+            {agentInbox && showInbox && agentInbox.placement === 'header' && (
               <AgentInboxButton
                 baseUrl={agentInbox.baseUrl}
                 getToken={agentInbox.getToken ?? headerToken}

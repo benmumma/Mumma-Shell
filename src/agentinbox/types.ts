@@ -115,7 +115,18 @@ export interface InboxPage {
   snoozed: InboxItem[];
   messages: InboxMessage[];
   seen_at: string | null;
+  /** When the agent next runs on its own (Mumapps-Server 2026-10-26+), or null. */
+  next_run_at?: string | null;
 }
+
+/** `GET …/inbox/history`: everything the agent wrote, newest first. */
+export interface InboxHistoryPage {
+  items: InboxItem[];
+  /** Pass back as `before` for the next page; null on the last. */
+  next_before: string | null;
+}
+
+export type InboxHistoryKind = 'ask' | 'update' | 'card';
 
 export interface InboxNote {
   id: string;
