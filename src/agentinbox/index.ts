@@ -3,12 +3,12 @@ export {
   type AgentInboxApi, type AgentInboxApiOptions, type AnswerResult, type InboxRef,
 } from './api';
 export {
-  badgeCount, totalBadge, whenLabel, undoRemainingMs, answerLine, followThroughLine, blockText,
+  badgeCount, totalBadge, hasNew, whenLabel, undoRemainingMs, answerLine, followThroughLine, blockText,
   progressFraction, classifyInboxLink, snoozeOptions, statusSummary, agoLabel, historyDays, kindLabel, historyStatus,
-  behaviorLine, composerHint, canActNow,
+  behaviorLine, composerHint, canActNow, awaitingReply, AWAIT_REPLY_MS,
 } from './logic';
 export {
-  useAgentInboxApi, useAgentInboxes, useAgentInbox, INBOX_POLL_MS,
+  useAgentInboxApi, useAgentInboxes, useAgentInbox, INBOX_POLL_MS, AWAIT_POLL_MS,
   type UseAgentInboxesResult, type UseAgentInboxResult, type InboxHistoryState,
 } from './hooks';
 export { AgentInboxPanel, type AgentInboxPanelProps } from './AgentInboxPanel';

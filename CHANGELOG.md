@@ -4,6 +4,22 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.11.1 — a chat box that grows, and "working on it"
+
+- The message box (and "Answer in your own words") is a textarea that grows
+  as you type, up to about eight lines, then scrolls. Enter sends,
+  Shift+Enter starts a new line.
+- After you write to an agent that wakes for messages, the conversation
+  shows "{name} is working on it" with a pulsing dots bubble until the reply
+  lands, and the open inbox checks back every 15 seconds meanwhile
+  (`awaitingReply`, `AWAIT_POLL_MS`).
+- Reply timing now says "within a few minutes", not "within a minute": a
+  Claude routine takes a minute to start and a few more to run.
+- The badge counts agent replies you have not read (`new_replies` on each
+  inbox summary, from Mumapps-Server), in both badge modes. New `hasNew(list)`
+  is true for anything new at all, so an app can show a dot when the count is
+  0. The drawer marks the inbox seen again when a reply lands while it is open.
+
 ## 0.11.0 — how each agent works, and Act now
 
 - `AgentInboxPanel` opens with one plain line on how the agent works: whether

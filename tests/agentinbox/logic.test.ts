@@ -1,6 +1,6 @@
 import { test, expect } from 'vitest';
 import {
-  answerLine, badgeCount, classifyInboxLink, followThroughLine, progressFraction, totalBadge, undoRemainingMs, whenLabel,
+  answerLine, badgeCount, classifyInboxLink, hasNew, followThroughLine, progressFraction, totalBadge, undoRemainingMs, whenLabel,
 } from '../../src/agentinbox';
 import { item, summary, profile } from './fixtures';
 
@@ -9,6 +9,16 @@ test('the badge counts open questions, or unseen where the inbox says so', () =>
   expect(badgeCount(summary({ open_asks: 1, unseen: 4, profile: { ...profile, notify: { push: 'asks', badge: 'unread' } } }))).toBe(4);
   expect(totalBadge([summary({ open_asks: 2 }), summary({ open_asks: 1 })])).toBe(3);
   expect(totalBadge(null)).toBe(0);
+  // An unread agent reply counts in either badge mode.
+  expect(badgeCount(summary({ open_asks: 1, unseen: 4, new_replies: 2 }))).toBe(3);
+  expect(badgeCount(summary({ open_asks: 0, unseen: 4, new_replies: 1, profile: { ...profile, notify: { push: 'asks', badge: 'unread' } } }))).toBe(5);
+});
+
+test('hasNew is true for anything new, counted or not', () => {
+  expect(hasNew([summary({ open_asks: 0, unseen: 0 })])).toBe(false);
+  expect(hasNew([summary({ open_asks: 0, unseen: 2 })])).toBe(true);
+  expect(hasNew([summary({ open_asks: 0, unseen: 0, new_replies: 1 })])).toBe(true);
+  expect(hasNew(null)).toBe(false);
 });
 
 test('whenLabel speaks in local, relative terms', () => {

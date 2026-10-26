@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import {
-  AgentInboxButton, inboxPath, statusSummary, historyDays, historyStatus, agoLabel, behaviorLine, composerHint, canActNow,
+  AgentInboxButton, inboxPath, statusSummary, historyDays, historyStatus, agoLabel, behaviorLine, composerHint, canActNow, awaitingReply,
   type InboxBehavior,
 } from '../../src/agentinbox';
 import { COACH, HH, item, ok, page, routeFetch, summary } from './fixtures';
@@ -106,9 +106,9 @@ test('the behaviour line says in plain words when the agent runs and reads what 
   expect(at(undefined)).toBeNull();
   expect(at(beh({ can_wake: false, answers: 'next_run', messages: 'next_run' })))
     .toMatch(/^Coach runs on its own schedule and reads your answers and messages then\. Next run at 9:30/);
-  expect(at(beh({ answers: 'next_run' }))).toMatch(/^Coach acts on your answers at its next run and replies to messages within a minute\. Next run/);
-  expect(at(beh())).toMatch(/^Coach acts on your answers and messages within a minute\. Next scheduled run at 9:30/);
-  expect(at(beh({ schedule: 'on_demand' }), null)).toBe('Coach runs when you answer or write, and acts within a minute.');
+  expect(at(beh({ answers: 'next_run' }))).toMatch(/^Coach acts on your answers at its next run and replies to messages within a few minutes\. Next run/);
+  expect(at(beh())).toMatch(/^Coach acts on your answers and messages within a few minutes\. Next scheduled run at 9:30/);
+  expect(at(beh({ schedule: 'on_demand' }), null)).toBe('Coach runs when you answer or write, and acts within a few minutes.');
   expect(at(beh({ paused: true, can_wake: false }))).toMatch(/^Coach is paused/);
   // The banner no longer repeats the next run once the behaviour line says it.
   expect(statusSummary({ name: 'Coach', asks: [], next_run_at: NEXT, behavior: beh() }, NOW).detail).toBeNull();
@@ -116,7 +116,7 @@ test('the behaviour line says in plain words when the agent runs and reads what 
 
 test('the composer hint and Act now follow the behaviour', () => {
   const p = (behavior: InboxBehavior) => ({ name: 'Coach', next_run_at: NEXT, behavior });
-  expect(composerHint(p(beh()), NOW, 'en-US')).toBe('Coach usually replies within a minute.');
+  expect(composerHint(p(beh()), NOW, 'en-US')).toBe('Coach usually replies within a few minutes.');
   expect(composerHint(p(beh({ can_wake: false, messages: 'next_run' })), NOW, 'en-US')).toMatch(/^Coach reads this on its next run, at 9:30/);
   const pending = [item({ id: 'a1', status: 'answered', follow_through: 'pending' })];
   expect(canActNow({ answered: pending, behavior: beh({ answers: 'next_run' }) })).toBe(true);
@@ -138,5 +138,42 @@ test('the panel opens with how the agent works, and Act now wakes it', async () 
   await waitFor(() => expect(fetchImpl.mock.calls.some(([u, init]) =>
     String(u).endsWith(inboxPath(ref, '/wake')) && (init as RequestInit)?.method === 'POST')).toBe(true));
   fireEvent.click(screen.getByRole('tab', { name: /Chat/ }));
-  expect(await screen.findByText(/Coach usually replies within a minute/)).toBeTruthy();
+  expect(await screen.findByText(/Coach usually replies within a few minutes/)).toBeTruthy();
+});
+
+test('the message box is a growing textarea: Enter sends, Shift+Enter keeps writing', async () => {
+  const sent: string[] = [];
+  const fetchImpl = server({
+    [`POST ${inboxPath(ref, '/messages')}`]: (_u, init) => { const body = JSON.parse(String(init.body)).body; sent.push(body);
+      return ok({ message: { id: 'm1', item_id: null, author_type: 'member', author_member_id: 'ben', body, created_at: '2026-10-26T15:00:00.000Z' } }); },
+  });
+  render(<AgentInboxButton baseUrl="https://api.test" app="fitter" getToken={() => 't'} fetchImpl={fetchImpl} pollMs={0} open />);
+  fireEvent.click(await screen.findByRole('tab', { name: /Chat/ }));
+  const box = screen.getByRole('textbox', { name: 'Message Coach' });
+  expect(box.tagName).toBe('TEXTAREA');
+  fireEvent.change(box, { target: { value: 'Line one' } });
+  fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+  expect(sent).toEqual([]);
+  fireEvent.change(box, { target: { value: 'Line one\nLine two' } });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  await waitFor(() => expect(sent).toEqual(['Line one\nLine two']));
+});
+
+test('after you write, the inbox says the agent is working on it until the reply lands', async () => {
+  const mine = { id: 'm1', item_id: null, author_type: 'member' as const, author_member_id: 'ben', body: 'Move the 10?', created_at: new Date(NOW.getTime() - 2 * 60e3).toISOString() };
+  const reply = { ...mine, id: 'm2', author_type: 'agent' as const, author_member_id: null, body: 'Done.' };
+  const b = beh();
+  expect(awaitingReply({ messages: [mine], behavior: b }, NOW)).toBe(true);
+  expect(awaitingReply({ messages: [mine, reply], behavior: b }, NOW)).toBe(false);
+  expect(awaitingReply({ messages: [mine], behavior: beh({ can_wake: false, messages: 'next_run' }) }, NOW)).toBe(false);
+  expect(awaitingReply({ messages: [mine], behavior: b }, new Date(NOW.getTime() + 20 * 60e3))).toBe(false);
+  expect(composerHint({ name: 'Coach', next_run_at: NEXT, behavior: b, messages: [mine] }, NOW)).toBe('Coach has your message and is working on it.');
+
+  const fresh = { ...mine, created_at: new Date().toISOString() };
+  const fetchImpl = server({
+    [`GET ${inboxPath(ref)}`]: () => ok(page({ messages: [fresh], behavior: b })),
+  });
+  render(<AgentInboxButton baseUrl="https://api.test" app="fitter" getToken={() => 't'} fetchImpl={fetchImpl} pollMs={0} open />);
+  fireEvent.click(await screen.findByRole('tab', { name: /Chat/ }));
+  expect(await screen.findByText('Coach is working on it')).toBeTruthy();
 });

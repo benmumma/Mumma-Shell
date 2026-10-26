@@ -97,6 +97,8 @@ export interface InboxSummary {
   profile: InboxProfile;
   open_asks: number;
   unseen: number;
+  /** Agent messages since the member last opened the inbox (server 2026-10-26; absent on older servers). */
+  new_replies?: number;
   top_ask: InboxItem | null;
 }
 
