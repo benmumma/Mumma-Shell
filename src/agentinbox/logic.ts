@@ -6,13 +6,22 @@ import type { InboxBlock, InboxItem, InboxPage, InboxSummary } from './types';
  */
 
 /** What the header badge counts for one inbox: open questions, or everything unseen. */
-export function badgeCount(s: Pick<InboxSummary, 'open_asks' | 'unseen' | 'profile'>): number {
+export function badgeCount(s: Pick<InboxSummary, 'open_asks' | 'unseen' | 'profile'> & { new_replies?: number }): number {
   const mode = s.profile?.notify?.badge ?? 'asks';
-  return Math.max(0, mode === 'unread' ? s.unseen : s.open_asks);
+  // A reply the member has not read counts in either mode: they asked, it came.
+  return Math.max(0, mode === 'unread' ? s.unseen : s.open_asks) + Math.max(0, s.new_replies ?? 0);
 }
 
 export function totalBadge(list: InboxSummary[] | null | undefined): number {
   return (list ?? []).reduce((n, s) => n + badgeCount(s), 0);
+}
+
+/**
+ * Anything new at all, counted or not: a fresh card or update the badge
+ * leaves out in 'asks' mode. Apps show a dot for it when the count is 0.
+ */
+export function hasNew(list: InboxSummary[] | null | undefined): boolean {
+  return (list ?? []).some(s => badgeCount(s) > 0 || s.unseen > 0);
 }
 
 function sameDay(a: Date, b: Date): boolean {

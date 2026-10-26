@@ -164,7 +164,10 @@ export function InboxTabs({ inboxes, current, onSelect }: {
   );
 }
 
-/** The drawer's body for one inbox; marks it seen once it has loaded. */
+/**
+ * The drawer's body for one inbox; marks it seen once it has loaded, and again
+ * when a reply lands while it is open, so the badge never counts what is on screen.
+ */
 export function OpenInbox({ api, summary, onChange, onNavigate, locale }: {
   api: ReturnType<typeof useAgentInboxApi>; summary: InboxSummary; onChange: () => void;
   onNavigate?: (p: string) => void; locale?: string;
@@ -174,7 +177,8 @@ export function OpenInbox({ api, summary, onChange, onNavigate, locale }: {
   const inbox = useAgentInbox(api, ref, { onChange });
   const loaded = Boolean(inbox.page);
   const { markAllSeen } = inbox;
-  useEffect(() => { if (loaded) markAllSeen(); }, [loaded, markAllSeen]);
+  const lastMessage = inbox.page?.messages[inbox.page.messages.length - 1]?.id ?? null;
+  useEffect(() => { if (loaded) markAllSeen(); }, [loaded, lastMessage, markAllSeen]);
   return <AgentInboxPanel inbox={inbox} onNavigate={onNavigate} locale={locale} />;
 }
 

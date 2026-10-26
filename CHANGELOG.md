@@ -15,6 +15,10 @@ https://github.com/benmumma/Mumma-Shell/releases.
   (`awaitingReply`, `AWAIT_POLL_MS`).
 - Reply timing now says "within a few minutes", not "within a minute": a
   Claude routine takes a minute to start and a few more to run.
+- The badge counts agent replies you have not read (`new_replies` on each
+  inbox summary, from Mumapps-Server), in both badge modes. New `hasNew(list)`
+  is true for anything new at all, so an app can show a dot when the count is
+  0. The drawer marks the inbox seen again when a reply lands while it is open.
 
 ## 0.11.0 — how each agent works, and Act now
 
