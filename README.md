@@ -352,6 +352,54 @@ Requires Supabase config: a Magic Link email template containing `{{ .Token }}`
 (so a 6-digit code is sent) and, for the Apple button, the Apple provider with
 the app's bundle id in its authorized client ids.
 
+## Agent inboxes (`@mumma/shell/agentinbox`)
+
+A private agent (Coach, Sous) writes to its own inbox instead of the household
+feed: **Now** cards, questions that **need you** (options, a recommendation, a
+default if you don't answer), **updates** that expire, a conversation, and
+what the agent **remembers**. The server side is Mumapps-Server
+`docs/routes/agent-inbox.md`; this entry point is the client side every app
+mounts.
+
+The quickest way in is the header:
+
+```tsx
+<MummaHeader appName="Fitter" appKey="fitter"
+  agentInbox={{ baseUrl: 'https://api.mumma.co', onNavigate: navigate }} />
+```
+
+That renders an inbox icon with a count of what needs the member, opening a
+right-side drawer (full width on a phone). It renders nothing while the
+member is signed out or has no inbox whose profile lists this app, so it is
+safe to mount everywhere. `app: null` shows every inbox (Dekko, Forward);
+`instanceId` pins one agent; `memberId` is the active member on a shared
+device; `getToken` defaults to the bearer the shell's auth client holds (a
+native shell passes its own).
+
+Placed by hand: `<AgentInboxButton baseUrl getToken app … />`. In a page of
+your own (Dekko's agent page):
+
+```tsx
+const api = useAgentInboxApi({ baseUrl, getToken, memberId });
+const inbox = useAgentInbox(api, { householdId, instanceId });
+return <AgentInboxPanel inbox={inbox} onNavigate={navigate} />;
+```
+
+`useAgentInboxes(api, app)` is the badge list (polled every minute and on
+focus). Nothing in `createAgentInboxApi` throws: reads are `null` on any
+failure (signed out, `503 INBOX_DISABLED` before the server's flag is on),
+writes are `{ ok: false, code, message }`.
+
+Answering is optimistic with the server's 30-second undo; an answered
+question then says what happens next ("Coach will act on this at 9 PM
+tonight", or the agent's outcome). Links are rendered only for in-app paths
+and `https://`.
+
+Theming: `--mumma-ai-*` custom properties (`bg`, `fg`, `muted`, `accent`,
+`accent-fg`, `border`, `surface`, `attention`, `done`, `failed`, `dot`,
+`radius`, `font`), each falling back to the app's `--mumma-wn-*` What's New
+skin and then to an OS-scheme palette. Controls are at least 44 px tall.
+
 ## What this package will never do
 
 - **No client-side token refresh.** `auth.mumma.co` is the only refresher (Invariant 1 of the contract). Renewal is always re-calling `GET /api/auth-status`, never `supabase.auth.refreshSession()`.
@@ -367,4 +415,6 @@ the app's bundle id in its authorized client ids.
   `NativeSignIn` screen, for Capacitor shells. Zero `@capacitor/*` dependencies.
 - `./whatsnew` — `fetchReleaseNotes`, the seen/unread helpers, `useReleaseNotes`,
   `WhatsNewPanel` and `WhatsNewButton`: the suite's release-notes feed.
+- `./agentinbox` — `createAgentInboxApi`, `useAgentInboxes`, `useAgentInbox`,
+  `AgentInboxPanel` and `AgentInboxButton`: a private agent's inbox, in any app.
 - `./header` — `MummaHeader`, a thin shared app header (app icon with Mumma Labs fallback, app-switcher dropdown, back-to-Dekko link, gear menu with account/sign-out) plus the `MUMMA_APPS` registry. Theme via CSS custom properties; ships no stylesheet.

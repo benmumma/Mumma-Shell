@@ -4,6 +4,7 @@ import { resolveAuthBaseUrl } from '../auth/urls';
 import type { AppAccessMap } from '../auth/types';
 import { MUMMA_APPS, MUMMA_LABS_ICON, type MummaApp } from './apps';
 import { WhatsNewButton } from '../whatsnew/WhatsNewButton';
+import { AgentInboxButton } from '../agentinbox/AgentInboxButton';
 
 /** Opt-in "What's new" for the header — see `MummaHeaderProps.whatsNew`. */
 export interface MummaHeaderWhatsNew {
@@ -14,6 +15,27 @@ export interface MummaHeaderWhatsNew {
   /** Button label, menu item and dialog title. Defaults to "What's new". */
   label?: string;
   /** Routes relative release-note links inside an SPA. */
+  onNavigate?: (path: string) => void;
+}
+
+/** Opt-in agent inboxes for the header — see `MummaHeaderProps.agentInbox`. */
+export interface MummaHeaderAgentInbox {
+  /** Origin that serves `/api/v1` (Mumapps-Server). */
+  baseUrl: string;
+  /**
+   * The member's bearer. Defaults to the one the shell's auth client already
+   * holds (inside `MummaAuthProvider`); a native shell passes its own.
+   */
+  getToken?: () => string | null | Promise<string | null>;
+  /** Which inboxes: those whose profile lists this app key. Defaults to `appKey`; `null` shows every inbox. */
+  app?: string | null;
+  /** Show only this agent (Fitter pins Coach). */
+  instanceId?: string;
+  /** The active member on a shared device. */
+  memberId?: string | null;
+  /** Button label and drawer title; defaults to the agent's name, or "Agents". */
+  label?: string;
+  /** Routes in-app links inside an SPA. */
   onNavigate?: (path: string) => void;
 }
 
@@ -69,6 +91,12 @@ export interface MummaHeaderProps {
    * neither, nothing renders. Absent → the header is exactly as before.
    */
   whatsNew?: MummaHeaderWhatsNew;
+  /**
+   * Opt in to the member's agent inboxes: an inbox icon with a count of what
+   * needs them, opening a side drawer. Renders nothing for a signed-out member
+   * or one with no inbox in this app. Absent → the header is exactly as before.
+   */
+  agentInbox?: MummaHeaderAgentInbox;
 }
 
 const styles: Record<string, CSSProperties> = {
@@ -192,7 +220,7 @@ function AppIcon({ src, alt, style }: { src: string; alt: string; style: CSSProp
 export function MummaHeader({
   appName, appKey, logoSrc, homeHref, homeUrl, onHomeNavigate, appAccess: appAccessProp,
   apps = MUMMA_APPS, appSwitcher = true,
-  dekkoUrl, familyUrl, accountUrl, children, actions, menuItems, whatsNew,
+  dekkoUrl, familyUrl, accountUrl, children, actions, menuItems, whatsNew, agentInbox,
 }: MummaHeaderProps) {
   const dekko = dekkoUrl ?? familyUrl;
   // Header works standalone (outside MummaAuthProvider): auth becomes null and
@@ -204,6 +232,13 @@ export function MummaHeader({
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const whatsNewApp = whatsNew ? (whatsNew.app ?? appKey) : undefined;
   const whatsNewLabel = whatsNew?.label ?? "What's new";
+  const inboxApp = agentInbox ? (agentInbox.app === undefined ? (appKey ?? null) : agentInbox.app) : undefined;
+  const showInbox = Boolean(agentInbox && user);
+  const headerToken = () => {
+    const h = auth?.client.getAuthHeaders?.() as Record<string, string> | undefined;
+    const bearer = h?.Authorization ?? '';
+    return bearer.startsWith('Bearer ') ? bearer.slice(7) : null;
+  };
   const rootRef = useRef<HTMLElement>(null);
   const account = accountUrl ?? `${auth?.client.authBaseUrl ?? resolveAuthBaseUrl()}/manage-account`;
 
@@ -273,9 +308,21 @@ export function MummaHeader({
       )}
       {children}
       <span style={styles.right}>
-        {(actions || (whatsNew && whatsNewApp)) && (
+        {(actions || (whatsNew && whatsNewApp) || showInbox) && (
           <span style={styles.actions}>
             {actions}
+            {agentInbox && showInbox && (
+              <AgentInboxButton
+                baseUrl={agentInbox.baseUrl}
+                getToken={agentInbox.getToken ?? headerToken}
+                app={inboxApp ?? null}
+                instanceId={agentInbox.instanceId}
+                memberId={agentInbox.memberId}
+                label={agentInbox.label}
+                onNavigate={agentInbox.onNavigate}
+                onOpenChange={open => { if (open) { setGearOpen(false); setSwitcherOpen(false); } }}
+              />
+            )}
             {whatsNew && whatsNewApp && (
               <WhatsNewButton
                 baseUrl={whatsNew.baseUrl}
