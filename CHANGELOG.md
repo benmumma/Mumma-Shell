@@ -4,6 +4,20 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.9.0 — agent inboxes, in any app
+
+- New entry point `@mumma/shell/agentinbox`: the client side of the Agent
+  Inbox (Mumapps-Server `docs/routes/agent-inbox.md`). `createAgentInboxApi`
+  (never throws), `useAgentInboxes` (the badge list, polled and refreshed on
+  focus), `useAgentInbox` (one inbox and every action: answer with an
+  optimistic 30 s undo, undo, pass, snooze, clear, message, mark seen, see and
+  forget notes), `AgentInboxPanel` and `AgentInboxButton` (header icon + count
+  + side drawer, with tabs when there are several agents).
+- `MummaHeader` takes an optional `agentInbox={{ baseUrl, app?, instanceId?,
+  memberId?, getToken?, onNavigate? }}`. Absent, the header is unchanged;
+  signed out or with no inbox in the app, it renders nothing.
+- Theming through `--mumma-ai-*`, falling back to the What's New skin.
+
 ## 0.8.2 — a Supabase outage no longer signs a device out
 
 - `NativeAuthClient`: when the device's access token has expired and Supabase

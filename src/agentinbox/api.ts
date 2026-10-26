@@ -1,0 +1,124 @@
+import type {
+  InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary,
+} from './types';
+
+export interface AgentInboxApiOptions {
+  /** Origin that serves `/api/v1` (Mumapps-Server). A trailing slash is fine. */
+  baseUrl: string;
+  /**
+   * The signed-in member's bearer token, or null when signed out. Every inbox
+   * route is authenticated; on the web this is the shell's `getAccessToken`.
+   */
+  getToken: () => string | null | Promise<string | null>;
+  /** The active member on a shared device (a kid on the kitchen tablet). Narrows, never widens. */
+  memberId?: string | null;
+  /** Defaults to the global `fetch`; tests inject one. */
+  fetchImpl?: typeof fetch;
+}
+
+export interface AgentInboxApi {
+  listInboxes(app?: string | null, signal?: AbortSignal): Promise<InboxSummary[] | null>;
+  getInbox(householdId: string, instanceId: string, signal?: AbortSignal): Promise<InboxPage | null>;
+  answer(ref: InboxRef, itemId: string, answer: { keys?: string[]; key?: string; text?: string | null }): Promise<InboxResult<AnswerResult>>;
+  undo(ref: InboxRef, itemId: string): Promise<InboxResult<{ item: InboxItem }>>;
+  dismiss(ref: InboxRef, itemId: string): Promise<InboxResult<{ item: InboxItem }>>;
+  snooze(ref: InboxRef, itemId: string, until: string): Promise<InboxResult<{ item: InboxItem }>>;
+  markSeen(ref: InboxRef, body: { item_ids?: string[]; all?: boolean }): Promise<InboxResult<{ seen_at: string | null }>>;
+  sendMessage(ref: InboxRef, body: string, itemId?: string | null): Promise<InboxResult<{ message: InboxMessage; acts_at: string }>>;
+  getNotes(ref: InboxRef): Promise<InboxNotes | null>;
+  forgetNote(ref: InboxRef, noteId: string): Promise<InboxResult<{ forgotten: boolean }>>;
+}
+
+export interface InboxRef {
+  householdId: string;
+  instanceId: string;
+}
+
+export interface AnswerResult {
+  item: InboxItem;
+  /** `now`: the agent is woken once the undo window closes. `next_run`: it acts on its next scheduled run. */
+  wake: 'now' | 'next_run';
+  acts_at: string | null;
+}
+
+const enc = encodeURIComponent;
+
+export function inboxPath({ householdId, instanceId }: InboxRef, rest = ''): string {
+  return `/api/v1/households/${enc(householdId)}/agents/${enc(instanceId)}/inbox${rest}`;
+}
+
+/**
+ * The inbox REST client. NOTHING here throws: reads resolve to `null` on any
+ * failure (signed out, 503 while the server's inbox is off, a network error),
+ * writes resolve to `{ ok: false, ... }` with the server's code, because an
+ * inbox must never break the app around it.
+ */
+export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchImpl }: AgentInboxApiOptions): AgentInboxApi {
+  const base = String(baseUrl ?? '').replace(/\/+$/, '');
+
+  async function call<T>(method: string, path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<InboxResult<T>> {
+    try {
+      const doFetch = fetchImpl ?? (typeof fetch === 'function' ? fetch : undefined);
+      if (!base || !doFetch) return { ok: false, status: 0, code: 'unavailable', message: 'unavailable' };
+      const token = await getToken();
+      if (!token) return { ok: false, status: 401, code: 'signed_out', message: 'signed out' };
+      let url = `${base}${path}`;
+      let payload: string | undefined;
+      // The active member rides the query on every call (a DELETE body can be
+      // dropped on the way) and the body on writes, where the server reads it.
+      if (memberId) url += `${url.includes('?') ? '&' : '?'}member_id=${enc(memberId)}`;
+      if (method !== 'GET') {
+        payload = JSON.stringify(memberId ? { ...(body ?? {}), member_id: memberId } : (body ?? {}));
+      }
+      const res = await doFetch(url, {
+        method,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: payload,
+        credentials: 'omit',
+        signal,
+      });
+      let json: { success?: unknown; data?: unknown; code?: unknown; message?: unknown } | null = null;
+      try { json = await res.json(); } catch { json = null; }
+      if (!res.ok || !json || json.success !== true) {
+        const code = typeof json?.code === 'string' ? json.code : `http_${res.status}`;
+        const message = typeof json?.message === 'string' ? json.message : code;
+        return { ok: false, status: res.status, code, message };
+      }
+      return { ok: true, data: json.data as T };
+    } catch (e) {
+      const aborted = (e as { name?: string } | null)?.name === 'AbortError';
+      return { ok: false, status: 0, code: aborted ? 'aborted' : 'network', message: aborted ? 'aborted' : 'network error' };
+    }
+  }
+
+  const read = async <T>(path: string, signal?: AbortSignal): Promise<T | null> => {
+    const r = await call<T>('GET', path, undefined, signal);
+    return r.ok ? r.data : null;
+  };
+
+  return {
+    async listInboxes(app, signal) {
+      const q = app ? `?app=${enc(app)}` : '';
+      const data = await read<{ inboxes?: unknown }>(`/api/v1/me/agent-inboxes${q}`, signal);
+      return data && Array.isArray(data.inboxes) ? (data.inboxes as InboxSummary[]) : null;
+    },
+    async getInbox(householdId, instanceId, signal) {
+      const data = await read<InboxPage>(inboxPath({ householdId, instanceId }), signal);
+      return data && Array.isArray(data.asks) ? data : null;
+    },
+    answer: (ref, itemId, answer) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/answer`), answer as Record<string, unknown>),
+    undo: (ref, itemId) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/undo`)),
+    dismiss: (ref, itemId) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/dismiss`)),
+    snooze: (ref, itemId, until) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/snooze`), { until }),
+    markSeen: (ref, body) => call('POST', inboxPath(ref, '/seen'), body),
+    sendMessage: (ref, body, itemId = null) => call('POST', inboxPath(ref, '/messages'), itemId ? { body, item_id: itemId } : { body }),
+    async getNotes(ref) {
+      return read<InboxNotes>(inboxPath(ref, '/notes'));
+    },
+    forgetNote: (ref, noteId) => call('DELETE', inboxPath(ref, `/notes/${enc(noteId)}`)),
+  };
+}
