@@ -1,5 +1,5 @@
 import type {
-  InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary,
+  InboxHistoryKind, InboxHistoryPage, InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary,
 } from './types';
 
 export interface AgentInboxApiOptions {
@@ -26,6 +26,8 @@ export interface AgentInboxApi {
   markSeen(ref: InboxRef, body: { item_ids?: string[]; all?: boolean }): Promise<InboxResult<{ seen_at: string | null }>>;
   sendMessage(ref: InboxRef, body: string, itemId?: string | null): Promise<InboxResult<{ message: InboxMessage; acts_at: string }>>;
   getNotes(ref: InboxRef): Promise<InboxNotes | null>;
+  /** Null on any failure, including a server older than the history route. */
+  getHistory(ref: InboxRef, opts?: { before?: string | null; kind?: InboxHistoryKind | null; limit?: number }): Promise<InboxHistoryPage | null>;
   forgetNote(ref: InboxRef, noteId: string): Promise<InboxResult<{ forgotten: boolean }>>;
 }
 
@@ -120,5 +122,14 @@ export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchI
       return read<InboxNotes>(inboxPath(ref, '/notes'));
     },
     forgetNote: (ref, noteId) => call('DELETE', inboxPath(ref, `/notes/${enc(noteId)}`)),
+    async getHistory(ref, { before = null, kind = null, limit } = {}) {
+      const q = new URLSearchParams();
+      if (before) q.set('before', before);
+      if (kind) q.set('kind', kind);
+      if (limit) q.set('limit', String(limit));
+      const qs = q.toString();
+      const data = await read<InboxHistoryPage>(inboxPath(ref, `/history${qs ? `?${qs}` : ''}`));
+      return data && Array.isArray(data.items) ? { items: data.items, next_before: data.next_before ?? null } : null;
+    },
   };
 }

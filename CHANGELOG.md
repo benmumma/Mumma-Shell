@@ -4,6 +4,33 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.10.0 — the agent inbox dock
+
+- `AgentInboxDock`: on a wide screen (≥ 1200 px) the inboxes are a sidebar
+  that opens by itself and pads the page to make room; the member can shrink
+  it to a bottom-right bubble, remembered per app. Narrower, it is the bubble,
+  opening the same drawer as the header button.
+- `MummaHeader`'s `agentInbox` prop now renders the dock by default.
+  `placement: 'header'` keeps the 0.9 header icon; `dock: { breakpoint,
+  reserveSpace }` tunes it. The prop is otherwise unchanged, so clients repin
+  without code changes.
+- New CSS hooks: `--mumma-ai-dock-width`, `--mumma-ai-bubble-bottom`, and the
+  read-only `--mumma-ai-dock-reserved`.
+- `AgentInboxPanel` redesigned. A status line says whether anything needs
+  the member ("1 question needs you", "Nothing needs you") and when the agent
+  next checks in. Then four views: **Now** (questions first, the recommended
+  answer leading as the filled option, the default and deadline spelled out,
+  then your recent answers, Now cards and the latest updates), **History**
+  (everything the agent wrote, by day, filterable by kind, paged with Show
+  older), **Chat**, and **Memory** (with how much of the budget is used).
+  An empty inbox explains what will appear.
+- `useAgentInbox` gains `history` / `loadHistory(kind, { more })`;
+  `createAgentInboxApi` gains `getHistory`. Pure helpers `statusSummary`,
+  `historyDays`, `historyStatus`, `kindLabel`, `agoLabel`. Needs
+  Mumapps-Server's `…/inbox/history` and `next_run_at`; against an older
+  server History shows "isn't available" and the status line leaves out the
+  check-in time.
+
 ## 0.9.0 — agent inboxes, in any app
 
 - New entry point `@mumma/shell/agentinbox`: the client side of the Agent

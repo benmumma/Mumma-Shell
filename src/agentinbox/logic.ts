@@ -1,4 +1,4 @@
-import type { InboxBlock, InboxItem, InboxSummary } from './types';
+import type { InboxBlock, InboxItem, InboxPage, InboxSummary } from './types';
 
 /**
  * Pure helpers behind the panel and the button. Kept out of the components so
@@ -119,4 +119,89 @@ export function snoozeOptions(now: Date = new Date()): { label: string; until: s
   tomorrow.setHours(8, 0, 0, 0);
   out.push({ label: 'Until tomorrow morning', until: tomorrow.toISOString() });
   return out;
+}
+
+/**
+ * The line at the top of the panel: what, if anything, the member has to do,
+ * and when the agent next checks in.
+ */
+export function statusSummary(
+  page: Pick<InboxPage, 'asks' | 'name' | 'next_run_at'>,
+  now: Date = new Date(),
+  locale?: string,
+): { tone: 'attention' | 'calm'; headline: string; detail: string | null } {
+  const n = page.asks.length;
+  const next = whenLabel(page.next_run_at ?? null, now, locale);
+  const checkIn = next ? `${page.name} next checks in ${next}.` : null;
+  if (n === 0) return { tone: 'calm', headline: 'Nothing needs you', detail: checkIn };
+  const due = page.asks.map(a => a.due_at).filter((d): d is string => Boolean(d)).sort()[0];
+  const dueLabel = whenLabel(due ?? null, now, locale);
+  return {
+    tone: 'attention',
+    headline: n === 1 ? '1 question needs you' : `${n} questions need you`,
+    detail: dueLabel ? `The first is due ${dueLabel}.` : checkIn,
+  };
+}
+
+/** "just now", "5 min ago", "3 h ago", "yesterday", or a short date. */
+export function agoLabel(iso: string | null | undefined, now: Date = new Date(), locale?: string): string {
+  if (!iso) return '';
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  const diff = now.getTime() - t.getTime();
+  if (diff < 60 * 1000) return 'just now';
+  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)} min ago`;
+  if (sameDay(t, now)) return `${Math.floor(diff / 3600000)} h ago`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (sameDay(t, yesterday)) return 'yesterday';
+  return t.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+}
+
+/** Items grouped under day headings — "Today", "Yesterday", "Mon, Oct 20" — newest first. */
+export function historyDays(items: InboxItem[], now: Date = new Date(), locale?: string): { label: string; items: InboxItem[] }[] {
+  const out: { label: string; key: string; items: InboxItem[] }[] = [];
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  for (const it of items) {
+    const t = new Date(it.created_at);
+    if (Number.isNaN(t.getTime())) continue;
+    const key = `${t.getFullYear()}-${t.getMonth()}-${t.getDate()}`;
+    let group = out[out.length - 1];
+    if (!group || group.key !== key) {
+      const label = sameDay(t, now) ? 'Today'
+        : sameDay(t, yesterday) ? 'Yesterday'
+          : t.toLocaleDateString(locale, {
+            weekday: 'short', month: 'short', day: 'numeric',
+            ...(t.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+          });
+      group = { label, key, items: [] };
+      out.push(group);
+    }
+    group.items.push(it);
+  }
+  return out.map(({ label, items: list }) => ({ label, items: list }));
+}
+
+/** What kind of entry this is, for the History list. */
+export function kindLabel(item: Pick<InboxItem, 'kind'>): string {
+  return item.kind === 'ask' ? 'Question' : item.kind === 'card' ? 'Card' : 'Update';
+}
+
+/** A short state tag for a past item, or null when it needs none. */
+export function historyStatus(item: Pick<InboxItem, 'kind' | 'status' | 'expires_at'>, now: Date = new Date()): string | null {
+  switch (item.status) {
+    case 'open': return 'Waiting for you';
+    case 'answered': return 'Answered';
+    case 'defaulted': return 'Default applied';
+    case 'dismissed': return item.kind === 'ask' ? 'Passed' : 'Cleared';
+    case 'expired': return item.kind === 'ask' ? 'Expired' : null;
+    case 'withdrawn': return 'Withdrawn';
+    case 'retired': return 'Retired';
+    case 'live':
+      if (item.kind === 'card') return 'Current';
+      if (item.expires_at && Date.parse(item.expires_at) <= now.getTime()) return null;
+      return null;
+    default: return null;
+  }
 }

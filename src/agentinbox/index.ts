@@ -4,16 +4,17 @@ export {
 } from './api';
 export {
   badgeCount, totalBadge, whenLabel, undoRemainingMs, answerLine, followThroughLine, blockText,
-  progressFraction, classifyInboxLink, snoozeOptions,
+  progressFraction, classifyInboxLink, snoozeOptions, statusSummary, agoLabel, historyDays, kindLabel, historyStatus,
 } from './logic';
 export {
   useAgentInboxApi, useAgentInboxes, useAgentInbox, INBOX_POLL_MS,
-  type UseAgentInboxesResult, type UseAgentInboxResult,
+  type UseAgentInboxesResult, type UseAgentInboxResult, type InboxHistoryState,
 } from './hooks';
 export { AgentInboxPanel, type AgentInboxPanelProps } from './AgentInboxPanel';
 export { AgentInboxButton, type AgentInboxButtonProps, type AgentInboxTriggerProps } from './AgentInboxButton';
+export { AgentInboxDock, DOCK_BREAKPOINT_PX, DOCK_WIDTH, type AgentInboxDockProps } from './AgentInboxDock';
 export { aiVar, colorsFrom, useInboxColors, type InboxColors } from './theme';
 export type {
   InboxItem, InboxItemKind, InboxBlock, InboxLink, InboxOption, InboxAnswer, InboxMessage, InboxProfile,
-  InboxSummary, InboxPage, InboxNote, InboxNotes, InboxResult, FollowThrough,
+  InboxSummary, InboxPage, InboxNote, InboxNotes, InboxResult, FollowThrough, InboxHistoryPage, InboxHistoryKind,
 } from './types';

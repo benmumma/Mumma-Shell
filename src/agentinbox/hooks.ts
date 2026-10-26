@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createAgentInboxApi, type AgentInboxApi, type AgentInboxApiOptions, type InboxRef } from './api';
 import { totalBadge } from './logic';
-import type { InboxItem, InboxNotes, InboxPage, InboxSummary } from './types';
+import type { InboxHistoryKind, InboxItem, InboxNotes, InboxPage, InboxSummary } from './types';
 
 /** How often an open app re-reads its inbox list (also on focus). */
 export const INBOX_POLL_MS = 60 * 1000;
@@ -92,6 +92,19 @@ export interface UseAgentInboxResult {
   notes: InboxNotes | null;
   loadNotes: () => Promise<void>;
   forgetNote: (noteId: string) => Promise<boolean>;
+  /** The History view: null until first loaded. */
+  history: InboxHistoryState | null;
+  /** Load the first page for `kind` (null: everything), or the next page with `more`. */
+  loadHistory: (kind?: InboxHistoryKind | null, opts?: { more?: boolean }) => Promise<void>;
+}
+
+export interface InboxHistoryState {
+  kind: InboxHistoryKind | null;
+  items: InboxItem[];
+  nextBefore: string | null;
+  loading: boolean;
+  /** The last page failed to load (what loaded is kept). */
+  error: boolean;
 }
 
 const UNDO_MS = 30 * 1000;
@@ -108,6 +121,9 @@ export function useAgentInbox(
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Set<string>>(() => new Set());
   const [notes, setNotes] = useState<InboxNotes | null>(null);
+  const [history, setHistory] = useState<InboxHistoryState | null>(null);
+  const historyRef = useRef<InboxHistoryState | null>(null);
+  historyRef.current = history;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const key = ref ? `${ref.householdId}/${ref.instanceId}` : '';
@@ -130,6 +146,7 @@ export function useAgentInbox(
   useEffect(() => {
     setPage(null);
     setNotes(null);
+    setHistory(null);
     setActionError(null);
     if (key) void refresh();
   }, [key, refresh]);
@@ -226,8 +243,34 @@ export function useAgentInbox(
     return true;
   }), [api, withBusy]);
 
+  const historySeq = useRef(0);
+  const loadHistory = useCallback<UseAgentInboxResult['loadHistory']>(async (kind = null, { more = false } = {}) => {
+    const r = refRef.current;
+    if (!r) return;
+    const prev = historyRef.current;
+    const appending = more && prev && prev.kind === kind && prev.nextBefore;
+    const mine = ++historySeq.current;
+    const forKey = keyRef.current;
+    setHistory({
+      kind,
+      items: appending ? prev.items : [],
+      nextBefore: appending ? prev.nextBefore : null,
+      loading: true,
+      error: false,
+    });
+    const res = await api.getHistory(r, { kind, before: appending ? prev.nextBefore : null });
+    if (mine !== historySeq.current || keyRef.current !== forKey) return;
+    setHistory(h => {
+      const items = appending && h ? h.items : [];
+      if (!res) return { kind, items, nextBefore: appending && h ? h.nextBefore : null, loading: false, error: true };
+      const seen = new Set(items.map(i => i.id));
+      return { kind, items: [...items, ...res.items.filter(i => !seen.has(i.id))], nextBefore: res.next_before, loading: false, error: false };
+    });
+  }, [api]);
+
   return {
     page, loading, error, actionError, busy, refresh,
     answer, undo, dismiss, snooze, send, markAllSeen, notes, loadNotes, forgetNote,
+    history, loadHistory,
   };
 }

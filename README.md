@@ -368,10 +368,23 @@ The quickest way in is the header:
   agentInbox={{ baseUrl: 'https://api.mumma.co', onNavigate: navigate }} />
 ```
 
-That renders an inbox icon with a count of what needs the member, opening a
-right-side drawer (full width on a phone). It renders nothing while the
-member is signed out or has no inbox whose profile lists this app, so it is
-safe to mount everywhere. `app: null` shows every inbox (Dekko, Forward);
+That renders the **dock** (0.10.0+): on a screen at least 1200 px wide, a
+sidebar on the right that opens by itself and pads the page (`body`) so it sits
+beside the app rather than over it. The member can shrink it to a round bubble
+in the bottom-right corner (with the count of what needs them), and that choice
+is remembered per app in `localStorage`. Below the breakpoint it is the bubble,
+which opens a right-side drawer (full width on a phone). It renders nothing
+while the member is signed out or has no inbox whose profile lists this app,
+so it is safe to mount everywhere.
+
+- `placement: 'header'` keeps the 0.9 header icon and drawer instead.
+- `dock: { breakpoint, reserveSpace }` tunes it. With `reserveSpace: false`
+  the page is left alone; an app with its own fixed layout reads
+  `--mumma-ai-dock-reserved` (the sidebar's width while open, else `0px`).
+- `--mumma-ai-dock-width` (default `22rem`) sets the width, and
+  `--mumma-ai-bubble-bottom` (default `1rem`) lifts the bubble above a bottom
+  bar.
+- Placed by hand: `<AgentInboxDock baseUrl getToken app … />`. `app: null` shows every inbox (Dekko, Forward);
 `instanceId` pins one agent; `memberId` is the active member on a shared
 device; `getToken` defaults to the bearer the shell's auth client holds (a
 native shell passes its own).
