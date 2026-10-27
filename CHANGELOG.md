@@ -4,6 +4,15 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.16.0 — an app can leave out the inbox status
+
+- **`AgentInboxPanel` takes `hideStatus`.** It leaves out the status at the
+  top: the line on how the agent behaves and the "questions need you" banner.
+  Dekko's agent channel shows that status with Now, beside the conversation,
+  so its Chat, History and Memory views pass `hideStatus`. Before, the status
+  showed twice on a wide screen, and on a phone it pushed the chat composer
+  below the fold. Default false, so every other caller is unchanged.
+
 ## 0.15.0 — household feeds in the sidebar
 
 - **The dock shows household feed channels beside the agents.** Each member

@@ -27,6 +27,12 @@ export interface AgentInboxPanelProps {
   onViewChange?: (view: AgentInboxView) => void;
   /** Leave out the panel's own tab strip (the app shows `view` as its tabs). */
   hideTabs?: boolean;
+  /**
+   * Leave out the status at the top (how the agent behaves, and the "questions
+   * need you" banner), for an app that already shows it beside this panel:
+   * Dekko's agent channel shows it with Now, not over Chat, History and Memory.
+   */
+  hideStatus?: boolean;
 }
 
 export type AgentInboxView = 'now' | 'history' | 'chat' | 'memory';
@@ -939,7 +945,7 @@ function Memory({ inbox, name, s, c }: { inbox: UseAgentInboxResult; name: strin
  * filterable, paged), Chat, and Memory. No stylesheet: colors are
  * `--mumma-ai-*` properties.
  */
-export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation, view: viewProp, onViewChange, hideTabs }: AgentInboxPanelProps) {
+export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation, view: viewProp, onViewChange, hideTabs, hideStatus }: AgentInboxPanelProps) {
   const c = useInboxColors();
   const s = styles(c);
   const { page } = inbox;
@@ -975,8 +981,8 @@ export function AgentInboxPanel({ inbox, onNavigate, locale, hideConversation, v
 
   return (
     <div style={{ color: c.fg, fontSize: '0.9375rem', lineHeight: 1.5 }} data-mumma-agent-inbox="">
-      <BehaviorLine page={page} s={s} c={c} now={now} locale={locale} />
-      <StatusBanner page={page} s={s} c={c} now={now} locale={locale} />
+      {!hideStatus && <BehaviorLine page={page} s={s} c={c} now={now} locale={locale} />}
+      {!hideStatus && <StatusBanner page={page} s={s} c={c} now={now} locale={locale} />}
       {!hideTabs && <div role="tablist" aria-label={`${name} inbox`} style={{
         display: 'flex', gap: '0.25rem', padding: '0.25rem', margin: '0 0 1rem',
         background: c.surface, border: `1px solid ${c.border}`, borderRadius: '999px',

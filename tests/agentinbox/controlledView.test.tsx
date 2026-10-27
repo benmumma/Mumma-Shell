@@ -42,3 +42,21 @@ test('an app can own the tabs: the panel follows its view and draws no tab strip
   fireEvent.click(screen.getByRole('button', { name: 'app memory' }));
   expect(await screen.findByText(/no notes yet/)).toBeTruthy();
 });
+
+function Quiet({ hideStatus }: { hideStatus?: boolean }) {
+  const api = useAgentInboxApi({ baseUrl: 'https://api.test', getToken: () => 't', fetchImpl });
+  const inbox = useAgentInbox(api, ref);
+  return <AgentInboxPanel inbox={inbox} view="memory" hideTabs hideStatus={hideStatus} />;
+}
+
+test('hideStatus leaves out the status for an app that shows it beside the panel', async () => {
+  const shown = render(<Quiet />);
+  await shown.findByText(/no notes yet/);
+  expect(shown.container.querySelector('[data-mumma-agent-inbox] > [role="status"]')).toBeTruthy();
+  shown.unmount();
+
+  const quiet = render(<Quiet hideStatus />);
+  await quiet.findByText(/no notes yet/);
+  expect(quiet.container.querySelector('[data-mumma-agent-inbox] > [role="status"]')).toBeNull();
+  expect(quiet.container.querySelector('[data-mumma-ai-behavior]')).toBeNull();
+});
