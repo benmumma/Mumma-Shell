@@ -46,6 +46,11 @@ export interface MummaHeaderAgentInbox {
   placement?: 'dock' | 'header';
   /** Dock tuning: the sidebar breakpoint (px, default 1200) and whether it pads the page. */
   dock?: { breakpoint?: number; reserveSpace?: boolean };
+  /**
+   * The household feed channels the member picked, beside the agents in the
+   * dock, with "Choose feeds" (0.15.0). Default true; Dekko passes false.
+   */
+  channels?: boolean;
 }
 
 export interface MummaHeaderProps {
@@ -306,6 +311,7 @@ export function MummaHeader({
           instanceId={agentInbox.instanceId}
           memberId={agentInbox.memberId}
           label={agentInbox.label}
+          channels={agentInbox.channels}
           onNavigate={agentInbox.onNavigate}
           breakpoint={agentInbox.dock?.breakpoint}
           reserveSpace={agentInbox.dock?.reserveSpace}

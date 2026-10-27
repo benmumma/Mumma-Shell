@@ -4,6 +4,24 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.15.0 — household feeds in the sidebar
+
+- **The dock shows household feed channels beside the agents.** Each member
+  picks which of their household's feeds (General, Highlights, ones the
+  household made) appear, from a new "Choose feeds" button in the dock's
+  header. The pick is kept on the server (Mumapps-Server `in_sidebar`,
+  `GET /me/channels`), so it follows the member across Fitter, Mealmate and
+  Forward. A channel tab shows its newest posts and, where you may post, a
+  composer. With no agent and nothing picked yet, the dock is a bubble that
+  opens straight onto "Choose feeds".
+- `AgentInboxDock` and `MummaHeader`'s `agentInbox` take `channels` (default
+  true). Dekko, which is the feed, passes false. A dock pinned to one agent
+  (`instanceId`) never shows channels.
+- New exports: `ChannelFeedPanel`, `ChannelPicker`, `useSidebarChannels`,
+  `sidebarItems`, `postAuthor` and the channel types. The inbox client gains
+  optional `listSidebarChannels`, `getChannelPosts`, `postToChannel` and
+  `setChannelInSidebar`; against a server without channels they read as none.
+
 ## 0.14.0 — an app can draw the inbox tabs itself
 
 - **`AgentInboxPanel` takes `view`, `onViewChange` and `hideTabs`.** An app

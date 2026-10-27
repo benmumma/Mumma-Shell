@@ -191,3 +191,42 @@ export interface InboxNotes {
 export type InboxResult<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; code: string; message: string };
+
+/** A household feed channel the sidebar can show (Mumapps-Server `GET /me/channels`). */
+export interface SidebarChannel {
+  id: string;
+  household_id: string;
+  household_name: string | null;
+  kind: 'general' | 'highlights' | 'custom' | string;
+  name: string;
+  icon?: string | null;
+  can_post?: boolean;
+  in_sidebar: boolean;
+  badge?: { asks?: number; new?: number } | null;
+}
+
+/** A household the sidebar's channels belong to: your member id there and who posts. */
+export interface SidebarHousehold {
+  id: string;
+  name: string | null;
+  member_id: string;
+  members: { member_id: string; display_name: string | null }[];
+}
+
+export interface SidebarChannels {
+  channels: SidebarChannel[];
+  households: SidebarHousehold[];
+}
+
+/** A top-level feed post, as much of it as the sidebar shows. */
+export interface ChannelPost {
+  id: string;
+  publisher_type?: 'member' | 'agent' | 'module' | string;
+  publisher_member_id?: string | null;
+  publisher_key?: string | null;
+  persona_name?: string | null;
+  title?: string | null;
+  body?: string | null;
+  created_at: string;
+  reply_count?: number;
+}
