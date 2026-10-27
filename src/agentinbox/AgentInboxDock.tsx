@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAgentInboxApi, useAgentInboxes } from './hooks';
 import { badgeCount } from './logic';
-import { InboxDrawer, InboxIcon, InboxTabs, OpenInbox, countStyle } from './AgentInboxButton';
+import { InboxDrawer, InboxIcon, OpenInbox, countStyle } from './AgentInboxButton';
+import { ChannelFeedPanel, ChannelPicker, sidebarItems, useSidebarChannels, type SidebarItem } from './channels';
 import { useInboxColors, AI_FONT, TOUCH } from './theme';
 
 /** The width at which the dock becomes a sidebar. Below it, a bubble opens the drawer. */
@@ -27,6 +28,12 @@ export interface AgentInboxDockProps {
   memberId?: string | null;
   /** Sidebar title with several agents. Defaults to the agent's name with one, else "Agents". */
   label?: string;
+  /**
+   * Household feed channels beside the agents (0.15.0): the ones this member
+   * picked, plus "Choose feeds". Default true; Dekko, which is the feed,
+   * passes false.
+   */
+  channels?: boolean;
   onNavigate?: (path: string) => void;
   /** Min viewport width (px) for the sidebar. Default 1200. */
   breakpoint?: number;
@@ -163,6 +170,42 @@ function CollapseIcon() {
   );
 }
 
+function FeedsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 6h16" /><path d="M4 12h10" /><path d="M4 18h7" /><path d="M17 15v6" /><path d="M14 18h6" />
+    </svg>
+  );
+}
+
+/** The agents and channels across the top, when there is more than one. */
+function SidebarTabs({ items, current, onSelect }: { items: SidebarItem[]; current: SidebarItem | null; onSelect: (key: string) => void }) {
+  const c = useInboxColors();
+  if (items.length < 2) return null;
+  return (
+    <div role="tablist" aria-label="Agents and feeds" style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', padding: '0.5rem 0.75rem', borderBottom: `1px solid ${c.border}`, flex: 'none' }}>
+      {items.map((it, i) => {
+        const on = current?.key === it.key;
+        const sep = i > 0 && items[i - 1].type !== it.type;
+        return (
+          <span key={it.key} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', flex: 'none' }}>
+            {sep && <span aria-hidden style={{ width: '1px', alignSelf: 'stretch', margin: '0.375rem 0.25rem', background: c.border }} />}
+            <button role="tab" type="button" aria-selected={on} onClick={() => onSelect(it.key)}
+              style={{
+                ...TOUCH, padding: '0.375rem 0.75rem', font: 'inherit', fontWeight: on ? 700 : 500, cursor: 'pointer',
+                whiteSpace: 'nowrap', color: c.fg, background: on ? c.surface : 'transparent',
+                border: `1px solid ${on ? c.border : 'transparent'}`, borderRadius: '999px',
+              }}>
+              {it.type === 'channel' ? `# ${it.label}` : it.label}{it.badge > 0 ? ` · ${it.badge}` : ''}
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * The agent inboxes as a primary surface rather than a header icon. On a wide
  * screen it is a sidebar that opens by itself and makes room for itself; the
@@ -172,11 +215,14 @@ function CollapseIcon() {
  * in this app, so every app can mount it unconditionally.
  */
 export function AgentInboxDock({
-  baseUrl, getToken, app, instanceId, memberId = null, label, onNavigate, breakpoint = DOCK_BREAKPOINT_PX,
-  reserveSpace = true, storageKey, locale, pollMs, fetchImpl,
+  baseUrl, getToken, app, instanceId, memberId = null, label, channels: withChannels = true, onNavigate,
+  breakpoint = DOCK_BREAKPOINT_PX, reserveSpace = true, storageKey, locale, pollMs, fetchImpl,
 }: AgentInboxDockProps) {
   const api = useAgentInboxApi({ baseUrl, getToken, memberId, fetchImpl });
   const { inboxes, refresh } = useAgentInboxes(api, app, { pollMs });
+  // A dock pinned to one agent (Fitter's Coach) stays that agent's.
+  const feeds = useSidebarChannels(api, { enabled: withChannels && !instanceId, pollMs });
+  const [picking, setPicking] = useState(false);
   const c = useInboxColors();
   const wide = useMinWidth(breakpoint);
   const key = storageKey ?? `mumma-ai-dock:${app ?? 'all'}`;
@@ -191,10 +237,19 @@ export function AgentInboxDock({
     () => (inboxes ?? []).filter(i => !instanceId || i.instance_id === instanceId),
     [inboxes, instanceId],
   );
-  const current = shown.find(i => i.instance_id === selected) ?? shown[0] ?? null;
+  const pickedChannels = feeds.picked?.channels;
+  const items = useMemo(
+    () => sidebarItems(shown, pickedChannels ?? [], badgeCount),
+    [shown, pickedChannels],
+  );
+  const current = items.find(i => i.key === selected) ?? items[0] ?? null;
   const badge = shown.reduce((n, s) => n + badgeCount(s), 0);
-  const title = label ?? (shown.length === 1 ? shown[0].name : 'Agents');
-  const docked = wide && !collapsed && shown.length > 0;
+  // With nothing to show yet, a member who could pick a feed still gets the
+  // bubble, which opens straight onto "Choose feeds".
+  const canPick = withChannels && !instanceId && (feeds.all?.channels.length ?? 0) > 0;
+  const hasChannels = items.some(i => i.type === 'channel');
+  const title = label ?? (items.length === 1 ? items[0].label : hasChannels || (!items.length && canPick) ? 'Agents and feeds' : 'Agents');
+  const docked = wide && !collapsed && (items.length > 0 || picking);
 
   const setCollapsed = (next: boolean) => { setCollapsedState(next); writeCollapsed(key, next); };
   // A dragged width is the member's; without one the app's default stands.
@@ -215,15 +270,32 @@ export function AgentInboxDock({
   // Growing past the breakpoint with the drawer open hands it to the sidebar.
   useEffect(() => { if (docked) setDrawerOpen(false); }, [docked]);
 
-  if (shown.length === 0 || !current) return null;
+  if (items.length === 0 && !canPick) return null;
 
   const navigate = onNavigate ? (path: string) => { setDrawerOpen(false); onNavigate(path); } : undefined;
   const accessibleName = badge > 0 ? `${title} (${badge} need${badge === 1 ? 's' : ''} you)` : title;
-  const tabs = <InboxTabs inboxes={shown} current={current} onSelect={setSelected} />;
-  const body = (
-    <OpenInbox key={current.instance_id} api={api} summary={current} onChange={() => { void refresh(); }}
+  const showPicker = picking || items.length === 0;
+  const tabs = showPicker ? null : <SidebarTabs items={items} current={current} onSelect={k => { setSelected(k); }} />;
+  const household = current?.type === 'channel'
+    ? feeds.picked?.households.find(h => h.id === current.channel.household_id) ?? null
+    : null;
+  const body = showPicker ? (
+    <ChannelPicker channels={feeds.all} onToggle={feeds.setPicked}
+      onDone={() => { setPicking(false); if (!items.length) { setDrawerOpen(false); setCollapsed(true); } }} />
+  ) : current?.type === 'inbox' ? (
+    <OpenInbox key={current.inbox.instance_id} api={api} summary={current.inbox} onChange={() => { void refresh(); }}
       onNavigate={navigate} locale={locale} />
-  );
+  ) : current?.type === 'channel' ? (
+    <ChannelFeedPanel key={current.key} api={api} channel={current.channel} household={household} locale={locale} pollMs={pollMs} />
+  ) : null;
+  const pickButton = canPick ? (
+    <button type="button" aria-label="Choose feeds" title="Choose feeds" aria-pressed={showPicker}
+      onClick={() => { setPicking(p => !p); void feeds.loadAll(); }}
+      style={{ ...bubbleReset, ...TOUCH, width: '2.75rem', borderRadius: '0.35rem', color: 'inherit' }}>
+      <FeedsIcon />
+    </button>
+  ) : null;
+  const heading = showPicker ? 'Choose feeds' : items.length > 1 ? title : (current?.label ?? title);
 
   if (docked) {
     return (
@@ -239,7 +311,8 @@ export function AgentInboxDock({
           onResize={setWidthPx} onCommit={px => writeWidth(key, px)}
           onReset={() => { setWidthPx(null); writeWidth(key, null); }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.5rem 0.5rem 1rem', borderBottom: `1px solid ${c.border}`, flex: 'none' }}>
-          <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 600, marginRight: 'auto' }}>{shown.length > 1 ? title : current.name}</h2>
+          <h2 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 600, marginRight: 'auto' }}>{heading}</h2>
+          {pickButton}
           <button type="button" aria-label="Shrink" title="Shrink" onClick={() => setCollapsed(true)}
             style={{ ...bubbleReset, ...TOUCH, width: '2.75rem', borderRadius: '0.35rem', color: 'inherit' }}>
             <CollapseIcon />
@@ -257,7 +330,7 @@ export function AgentInboxDock({
     <>
       <button ref={bubbleRef} type="button" data-mumma-ai-bubble="" aria-label={accessibleName} title={title}
         aria-haspopup={wide ? undefined : 'dialog'} aria-expanded={wide ? undefined : drawerOpen}
-        onClick={() => (wide ? setCollapsed(false) : setDrawerOpen(true))}
+        onClick={() => { if (!items.length) setPicking(true); if (wide) setCollapsed(false); else setDrawerOpen(true); }}
         style={{
           ...bubbleReset, position: 'fixed', zIndex: 1500,
           right: 'calc(1rem + env(safe-area-inset-right, 0px))',
@@ -269,7 +342,8 @@ export function AgentInboxDock({
         {badge > 0 && <span style={{ ...countStyle, top: '0.1rem', right: '0.1rem' }} data-testid="agentinbox-badge" aria-hidden>{badge > 9 ? '9+' : badge}</span>}
       </button>
       {!wide && drawerOpen && (
-        <InboxDrawer title={shown.length > 1 ? title : current.name} onClose={() => setDrawerOpen(false)} fallbackFocus={bubbleRef} header={tabs}>
+        <InboxDrawer title={heading} onClose={() => setDrawerOpen(false)} fallbackFocus={bubbleRef}
+          header={pickButton ? <>{tabs}<div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 0.75rem' }}>{pickButton}</div></> : tabs}>
           {body}
         </InboxDrawer>
       )}

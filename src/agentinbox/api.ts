@@ -1,4 +1,5 @@
 import type {
+  ChannelPost, SidebarChannels,
   InboxHistoryKind, InboxHistoryPage, InboxItem, InboxMessage, InboxNotes, InboxPage, InboxResult, InboxSummary, InboxTopic,
 } from './types';
 
@@ -38,6 +39,18 @@ export interface AgentInboxApi {
   reopenTopic?(ref: InboxRef, topicId: string): Promise<InboxResult<{ topic: InboxTopic }>>;
   /** Undo what the agent added to your profile, from its update. */
   undoProfileChange?(ref: InboxRef, itemId: string): Promise<InboxResult<{ item: InboxItem; reverted: string[] }>>;
+  /**
+   * The household feed channels the sidebar can show (Mumapps-Server
+   * `GET /me/channels`, 2026-10-27+): `picked` for the ones this member put
+   * there. Null on any failure, including a server without channels.
+   */
+  listSidebarChannels?(opts?: { picked?: boolean }): Promise<SidebarChannels | null>;
+  /** A channel's newest top-level posts. Null on any failure. */
+  getChannelPosts?(householdId: string, channelId: string, opts?: { limit?: number }): Promise<ChannelPost[] | null>;
+  /** Post into a channel as the signed-in member. */
+  postToChannel?(householdId: string, channelId: string, body: string): Promise<InboxResult<unknown>>;
+  /** Put a channel in this member's sidebar, or take it out. */
+  setChannelInSidebar?(householdId: string, channelId: string, inSidebar: boolean): Promise<InboxResult<unknown>>;
 }
 
 export interface InboxRef {
@@ -153,5 +166,20 @@ export function createAgentInboxApi({ baseUrl, getToken, memberId = null, fetchI
     startTopic: (ref) => call('POST', inboxPath(ref, '/topics')),
     reopenTopic: (ref, topicId) => call('POST', inboxPath(ref, `/topics/${enc(topicId)}/reopen`)),
     undoProfileChange: (ref, itemId) => call('POST', inboxPath(ref, `/items/${enc(itemId)}/undo-profile`)),
+    async listSidebarChannels({ picked = false } = {}) {
+      const data = await read<SidebarChannels>(`/api/v1/me/channels${picked ? '?picked=1' : ''}`);
+      return data && Array.isArray(data.channels)
+        ? { channels: data.channels, households: Array.isArray(data.households) ? data.households : [] }
+        : null;
+    },
+    async getChannelPosts(householdId, channelId, { limit = 20 } = {}) {
+      const data = await read<{ posts?: ChannelPost[] }>(
+        `/api/v1/households/${enc(householdId)}/feed?channel=${enc(channelId)}&limit=${limit}`);
+      return data && Array.isArray(data.posts) ? data.posts : null;
+    },
+    postToChannel: (householdId, channelId, body) =>
+      call('POST', `/api/v1/households/${enc(householdId)}/feed`, { body, channel_id: channelId }),
+    setChannelInSidebar: (householdId, channelId, inSidebar) =>
+      call('PUT', `/api/v1/households/${enc(householdId)}/channels/${enc(channelId)}/prefs`, { in_sidebar: inSidebar }),
   };
 }
