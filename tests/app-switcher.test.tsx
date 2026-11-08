@@ -21,9 +21,9 @@ function renderWithAuth(ui: ReactNode, appAccess: Record<string, boolean> = {}) 
   return render(<MummaAuthProvider client={client}>{ui}</MummaAuthProvider>);
 }
 
-test('registry lists the twelve mumma apps in order with hosted icons', () => {
+test('registry lists the eleven mumma apps in order with hosted icons', () => {
   expect(MUMMA_APPS.map(a => a.key)).toEqual([
-    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'scholarquest', 'fitter', 'pickem', 'stonk', 'admin',
+    'dekko', 'forward', 'intellect', 'mealmate', 'library', 'arcade', 'rem', 'fitter', 'pickem', 'stonk', 'admin',
   ]);
   expect(MUMMA_APPS.find(a => a.key === 'forward')).toEqual({
     key: 'forward', name: 'Forward', url: 'https://forward.mumma.co',
@@ -33,6 +33,13 @@ test('registry lists the twelve mumma apps in order with hosted icons', () => {
   expect(MUMMA_APPS.find(a => a.key === 'library')?.iconSrc).toBe('https://www.mumma.co/new_logos/library_live.png');
   for (const app of MUMMA_APPS) expect(app.iconSrc).toMatch(/^https:\/\/www\.mumma\.co\/new_logos\/\w+_live\.png$/);
   expect(MUMMA_LABS_ICON).toBe('https://www.mumma.co/new_logos/mumma_labs_live.png');
+});
+
+test('the retired ScholarQuest and Writer are not in the switcher (2026-11-08)', () => {
+  const keys = MUMMA_APPS.map(a => a.key);
+  expect(keys).not.toContain('scholarquest');
+  expect(keys).not.toContain('writer');
+  for (const app of MUMMA_APPS) expect(app.url).not.toMatch(/\/\/(scholar|writer)\.mumma\./);
 });
 
 test('app name opens a switcher listing every app with its icon', () => {

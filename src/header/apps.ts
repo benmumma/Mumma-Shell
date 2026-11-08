@@ -21,6 +21,9 @@ const icon = (file: string) => `https://www.mumma.co/new_logos/${file}_live.png`
 // Icons follow the [app_name]_live.png scheme on www.mumma.co. Any not yet
 // uploaded still get their URL listed so they light up once the PNGs exist;
 // the header falls back to MUMMA_LABS_ICON on load error in the meantime.
+//
+// ScholarQuest retired on 2026-11-08 (scholar.mumma.co is gone): family
+// challenges live in Intellect's Family Learning, so it has no entry here.
 export const MUMMA_APPS: MummaApp[] = [
   { key: 'dekko', name: 'Dekko', url: 'https://dekko.mumma.co', iconSrc: icon('dekko') },
   { key: 'forward', name: 'Forward', url: 'https://forward.mumma.co', iconSrc: icon('forward') },
@@ -29,7 +32,6 @@ export const MUMMA_APPS: MummaApp[] = [
   { key: 'library', name: 'Library', url: 'https://library.mumma.co', iconSrc: icon('library') },
   { key: 'arcade', name: 'Arcade', url: 'https://arcade.mumma.co', iconSrc: icon('arcade') },
   { key: 'rem', name: 'REM', url: 'https://rem.mumma.co', iconSrc: icon('rem') },
-  { key: 'scholarquest', name: 'ScholarQuest', url: 'https://scholar.mumma.co', iconSrc: icon('scholarquest') },
   { key: 'fitter', name: 'Fitter', url: 'https://fitter.mumma.co', iconSrc: icon('fitter') },
   // Pick'em moved out of Mumapps-Client to its own client at pickem.mumma.co
   { key: 'pickem', name: "Pick'em", url: 'https://pickem.mumma.co', iconSrc: icon('pickem') },

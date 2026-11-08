@@ -69,7 +69,7 @@ import { MummaHeader } from '@mumma/shell/header';
 
 The app name renders as an app switcher by default — a dropdown listing every
 Mumma app (built-in `MUMMA_APPS` registry: Dekko, Forward, Intellect,
-MealMate, Library, Arcade, REM, ScholarQuest, Fitter, Pick'em, plus the
+MealMate, Library, Arcade, REM, Fitter, Pick'em, plus the
 access-gated Stonk Master and Mission Control) with icons hotlinked
 from `https://www.mumma.co/new_logos/[app_name]_live.png`. Icons that fail to load
 (e.g. not uploaded yet) fall back to the Mumma Labs mark at runtime, so new

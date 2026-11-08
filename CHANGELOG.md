@@ -4,6 +4,13 @@ Releases are cut as GitHub Releases with the packed tarball attached; this file
 is the short version. Entries before 0.7.0 live in the release notes at
 https://github.com/benmumma/Mumma-Shell/releases.
 
+## 0.16.1 — ScholarQuest leaves the app switcher
+
+- **`MUMMA_APPS` no longer lists ScholarQuest.** It retired on 2026-11-08 and
+  scholar.mumma.co is gone; family challenges and projects live in Intellect's
+  Family Learning. The switcher now shows eleven apps (Writer was never in
+  it). No API change: a client picks this up on its next shell bump.
+
 ## 0.16.0 — an app can leave out the inbox status
 
 - **`AgentInboxPanel` takes `hideStatus`.** It leaves out the status at the
